@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, MoreHorizontal, Pencil, Trash2 } from 
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +16,8 @@ import { OwnerAvatar, PriorityBadge, SmartFollowupIndicator, StatusBadge } from 
 import type { TaskFilters, TaskRow } from "@/hooks/use-tasks";
 
 type SortableColumn = "task_number" | "title" | "priority" | "status" | "due_date" | "followup_date" | "updated_at";
+
+const EMPTY_SELECTION = new Set<string>();
 
 const COLUMNS: { key: SortableColumn; label: string }[] = [
   { key: "task_number", label: "任務編號" },
@@ -33,6 +36,8 @@ export function TaskTable({
   onFiltersChange,
   onEdit,
   onDelete,
+  selectedIds,
+  onSelectionChange,
 }: {
   tasks: TaskRow[];
   total: number;
@@ -40,11 +45,35 @@ export function TaskTable({
   onFiltersChange: (filters: TaskFilters) => void;
   onEdit: (task: TaskRow) => void;
   onDelete: (task: TaskRow) => void;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (ids: Set<string>) => void;
 }) {
   const router = useRouter();
   const page = filters.page ?? 1;
   const pageSize = filters.pageSize ?? 20;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const selection = selectedIds ?? EMPTY_SELECTION;
+  const setSelection = onSelectionChange ?? (() => {});
+
+  const pageIds = tasks.map((t) => t.id);
+  const selectedOnPage = pageIds.filter((id) => selection.has(id));
+  const allOnPageSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
+  const someOnPageSelected = selectedOnPage.length > 0 && !allOnPageSelected;
+
+  const toggleRow = (id: string, checked: boolean) => {
+    const next = new Set(selection);
+    if (checked) next.add(id);
+    else next.delete(id);
+    setSelection(next);
+  };
+
+  const toggleAllOnPage = (checked: boolean) => {
+    const next = new Set(selection);
+    if (checked) pageIds.forEach((id) => next.add(id));
+    else pageIds.forEach((id) => next.delete(id));
+    setSelection(next);
+  };
 
   const toggleSort = (column: SortableColumn) => {
     if (filters.sortBy === column) {
@@ -60,6 +89,14 @@ export function TaskTable({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  aria-label="全選本頁"
+                  checked={someOnPageSelected ? "indeterminate" : allOnPageSelected}
+                  onCheckedChange={(checked) => toggleAllOnPage(checked === true)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </TableHead>
               {COLUMNS.map((col) => (
                 <TableHead key={col.key}>
                   <button
@@ -89,7 +126,7 @@ export function TaskTable({
           <TableBody>
             {tasks.length === 0 && (
               <TableRow>
-                <TableCell colSpan={11} className="py-10 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={12} className="py-10 text-center text-sm text-muted-foreground">
                   沒有符合條件的任務
                 </TableCell>
               </TableRow>
@@ -97,9 +134,17 @@ export function TaskTable({
             {tasks.map((task) => (
               <TableRow
                 key={task.id}
+                data-state={selection.has(task.id) ? "selected" : undefined}
                 className="cursor-pointer"
                 onClick={() => router.push(`/tasks/${task.id}`)}
               >
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    aria-label={`選取 ${task.title}`}
+                    checked={selection.has(task.id)}
+                    onCheckedChange={(checked) => toggleRow(task.id, checked === true)}
+                  />
+                </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{task.task_number}</TableCell>
                 <TableCell className="max-w-[220px] truncate font-medium">{task.title}</TableCell>
                 <TableCell><PriorityBadge priority={task.priority} /></TableCell>
