@@ -113,3 +113,27 @@ export function useDeleteTask() {
     onError: (err: Error) => toast.error(err.message),
   });
 }
+
+/** Bulk delete: reuses the same single-task DELETE endpoint (soft delete, permission
+ * checks, activity log all still apply per task) via parallel requests. */
+export function useDeleteTasks() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => fetchJson<TaskRow>(`/api/tasks/${id}`, { method: "DELETE" }))
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      return { total: ids.length, failed };
+    },
+    onSuccess: ({ total, failed }) => {
+      if (failed > 0) {
+        toast.error(`已刪除 ${total - failed} 筆，${failed} 筆失敗（可能已無權限或已被刪除）`);
+      } else {
+        toast.success(`已刪除 ${total} 筆任務`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
