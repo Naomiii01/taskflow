@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TaskFiltersBar } from "@/components/tasks/task-filters-bar";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { TaskTable } from "@/components/tasks/task-table";
-import { useDeleteTask, useTasks, type TaskFilters, type TaskRow } from "@/hooks/use-tasks";
+import { useDeleteTask, useDeleteTasks, useTasks, type TaskFilters, type TaskRow } from "@/hooks/use-tasks";
 
 export function TasksClient() {
   const [filters, setFilters] = React.useState<TaskFilters>({
@@ -21,9 +21,12 @@ export function TasksClient() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [editingTask, setEditingTask] = React.useState<TaskRow | null>(null);
   const [deletingTask, setDeletingTask] = React.useState<TaskRow | null>(null);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
 
   const { data, isLoading } = useTasks(filters);
   const deleteTask = useDeleteTask();
+  const deleteTasks = useDeleteTasks();
 
   return (
     <div className="flex flex-col gap-4">
@@ -45,6 +48,26 @@ export function TasksClient() {
       <Card>
         <CardContent className="flex flex-col gap-4 pt-5">
           <TaskFiltersBar filters={filters} onChange={setFilters} />
+
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm">
+              <span>已選擇 {selectedIds.size} 筆任務</span>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                  <X className="size-3.5" /> 取消選取
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setBulkDeleteOpen(true)}
+                >
+                  <Trash2 className="size-3.5" /> 刪除選取項目
+                </Button>
+              </div>
+            </div>
+          )}
+
           {isLoading && !data ? (
             <div className="py-10 text-center text-sm text-muted-foreground">載入中…</div>
           ) : (
@@ -58,6 +81,8 @@ export function TasksClient() {
                 setFormOpen(true);
               }}
               onDelete={(task) => setDeletingTask(task)}
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
             />
           )}
         </CardContent>
@@ -76,6 +101,20 @@ export function TasksClient() {
           if (!deletingTask) return;
           await deleteTask.mutateAsync(deletingTask.id);
           setDeletingTask(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title="刪除選取的任務"
+        description={`確定要刪除選取的 ${selectedIds.size} 筆任務嗎？任務會被軟刪除（保留紀錄，可由管理員還原），不會真正從資料庫移除。`}
+        confirmLabel="刪除"
+        loading={deleteTasks.isPending}
+        onConfirm={async () => {
+          await deleteTasks.mutateAsync(Array.from(selectedIds));
+          setSelectedIds(new Set());
+          setBulkDeleteOpen(false);
         }}
       />
     </div>
