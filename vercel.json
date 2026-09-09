@@ -1,0 +1,10 @@
+{
+  "crons": [
+    { "path": "/api/planning/checklist/run", "schedule": "0 16 * * *" },
+    { "path": "/api/reminders/run", "schedule": "0 1 * * *" },
+    { "path": "/api/escalation/run", "schedule": "5 1 * * *" },
+    { "path": "/api/daily-summary/run", "schedule": "10 1 * * *" },
+    { "path": "/api/weekly-summary/run", "schedule": "15 1 * * 1" },
+    { "path": "/api/planning/briefing/run", "schedule": "0 0 * * *" }
+  ]
+}
