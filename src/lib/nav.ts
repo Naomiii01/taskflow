@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  ListChecks,
   CalendarDays,
   Paperclip,
   Search,
@@ -19,11 +18,11 @@ export type NavItem = {
   phase?: number;
 };
 
-// 儀表板／看板已併入 Planning Operations Center 頁面的分頁籤，不再各自佔一個
-// 導覽項目（/dashboard、/kanban 仍會轉址過去，只是不出現在側邊選單）。
+// 儀表板／看板／任務列表都已併入 Planning Operations Center 頁面的分頁籤，
+// 不再各自佔一個導覽項目（/dashboard、/kanban、/tasks 仍會轉址過去，只是不
+// 出現在側邊選單）。
 export const NAV_ITEMS: NavItem[] = [
   { title: "Planning Operations Center", href: "/planning", icon: PlaneTakeoff },
-  { title: "任務列表", href: "/tasks", icon: ListChecks },
   { title: "行事曆", href: "/calendar", icon: CalendarDays, phase: 5 },
   { title: "附件與 OCR", href: "/attachments", icon: Paperclip },
   { title: "搜尋中心", href: "/search", icon: Search },
