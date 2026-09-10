@@ -41,3 +41,18 @@ export async function updateFollowup(supabase: DB, id: string, values: FollowupU
 
   return followup;
 }
+
+/** 刪除一筆追蹤紀錄。若刪掉的剛好是該任務最新一筆，改用剩下紀錄裡最新的
+ * 日期同步 tasks.followup_date（沒有剩下的就清空），避免儀表板／行事曆看到
+ * 已經不存在的追蹤日。 */
+export async function deleteFollowup(supabase: DB, id: string) {
+  const existing = await followupsRepo.findFollowupById(supabase, id);
+  if (!existing) throw new Error("找不到這筆追蹤紀錄");
+
+  const wasLatest = await followupsRepo.findLatestFollowupForTask(supabase, existing.task_id);
+  await followupsRepo.deleteFollowupById(supabase, id);
+
+  if (wasLatest?.created_at !== existing.created_at) return;
+  const newLatest = await followupsRepo.findLatestFollowupForTask(supabase, existing.task_id);
+  await tasksRepo.updateTask(supabase, existing.task_id, { followup_date: newLatest?.followup_date ?? null });
+}
