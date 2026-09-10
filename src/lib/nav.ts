@@ -23,7 +23,7 @@ export type NavItem = {
 // 出現在側邊選單）。
 export const NAV_ITEMS: NavItem[] = [
   { title: "Planning Operations Center", href: "/planning", icon: PlaneTakeoff },
-  { title: "行事曆", href: "/calendar", icon: CalendarDays, phase: 5 },
+  { title: "行事曆", href: "/calendar", icon: CalendarDays },
   { title: "附件與 OCR", href: "/attachments", icon: Paperclip },
   { title: "搜尋中心", href: "/search", icon: Search },
   { title: "通知中心", href: "/notifications", icon: Bell },
