@@ -21,7 +21,7 @@ export function SearchResultRow({ task }: { task: TaskWithRelations }) {
         <PriorityBadge priority={task.priority} />
         <StatusBadge status={task.status} />
         <span>{task.department?.department_name ?? "未分配"}</span>
-        <OwnerAvatar name={task.owner?.name} />
+        <OwnerAvatar name={task.owner_name ?? task.owner?.name} />
       </div>
       {task.description && <p className="line-clamp-1 text-sm text-muted-foreground">{task.description}</p>}
     </button>
