@@ -44,6 +44,21 @@ import { taskFormSchema, type TaskFormValues } from "@/lib/validations/task";
 
 const NONE = "__none__";
 
+// tasks.planning_month is a Postgres `date` column (stored as the 1st of the
+// target month), but <input type="month"> only ever reads/writes "YYYY-MM".
+// dateToMonthInput makes the field actually populate when editing; the repo
+// layer (tasks-repository.ts) normalizes "YYYY-MM" -> "YYYY-MM-01" on every
+// write, but monthInputToDate does it here too so this component never hands
+// the API a value Postgres would reject with "invalid input syntax for type
+// date" (the root cause of the 伺服器發生錯誤 banner on task creation).
+function dateToMonthInput(date?: string | null): string {
+  return date ? date.slice(0, 7) : "";
+}
+
+function monthInputToDate(month?: string | null): string | null {
+  return month ? `${month}-01` : null;
+}
+
 function toFormValues(task?: TaskRow | null, initialTitle?: string): TaskFormValues {
   return {
     title: task?.title ?? initialTitle ?? "",
@@ -52,6 +67,9 @@ function toFormValues(task?: TaskRow | null, initialTitle?: string): TaskFormVal
     status: task?.status,
     department_id: task?.department_id ?? "",
     owner_id: task?.owner_id ?? null,
+    // Falls back to the joined system user's name for tasks that were
+    // created before 負責人 became free text (owner_name wasn't set yet).
+    owner_name: task?.owner_name ?? task?.owner?.name ?? "",
     due_date: task?.due_date ?? "",
     followup_date: task?.followup_date ?? "",
     tags: task?.tags ?? [],
@@ -60,7 +78,7 @@ function toFormValues(task?: TaskRow | null, initialTitle?: string): TaskFormVal
     aircraft_registration: task?.aircraft_registration ?? null,
     station: task?.station ?? null,
     work_category: task?.work_category ?? null,
-    planning_month: task?.planning_month ?? "",
+    planning_month: dateToMonthInput(task?.planning_month),
     source_department: task?.source_department ?? null,
     waiting_owner: task?.waiting_owner ?? null,
     planning_status: task?.planning_status ?? null,
@@ -118,7 +136,6 @@ export function TaskFormDialog({
   }, [open, task, initialTitle, reset]);
 
   const departmentId = watch("department_id");
-  const ownerId = watch("owner_id");
   const priority = watch("priority");
   const status = watch("status");
   const aircraftType = watch("aircraft_type");
@@ -145,13 +162,24 @@ export function TaskFormDialog({
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
+    // 負責人 is free text, but if what was typed matches an existing user's
+    // name exactly (case-insensitive), keep owner_id pointed at that account
+    // too — that's what powers 通知/權限/週報 for a real teammate. Anything
+    // that doesn't match (an outside contact, a typo-tolerant nickname, ...)
+    // is stored as a plain label with no system-user link.
+    const ownerName = values.owner_name?.trim() || "";
+    const matchedUser = ownerName
+      ? users?.find((u) => (u.name ?? "").trim().toLowerCase() === ownerName.toLowerCase())
+      : undefined;
     const payload = {
       ...values,
       tags,
       description: values.description || null,
       due_date: values.due_date || null,
       followup_date: values.followup_date || null,
-      planning_month: values.planning_month || null,
+      planning_month: monthInputToDate(values.planning_month),
+      owner_name: ownerName || null,
+      owner_id: matchedUser?.id ?? null,
     };
 
     if (isEdit && task) {
@@ -220,19 +248,19 @@ export function TaskFormDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label>負責人</Label>
-              <Select
-                value={ownerId ?? NONE}
-                onValueChange={(v) => setValue("owner_id", v === NONE ? null : v)}
-              >
-                <SelectTrigger className="w-full"><SelectValue placeholder="未指派" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>未指派</SelectItem>
-                  {users?.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name ?? u.email}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="owner_name">負責人</Label>
+              <Input
+                id="owner_name"
+                {...register("owner_name")}
+                list="owner-name-suggestions"
+                placeholder="輸入姓名（可不是系統使用者）"
+                autoComplete="off"
+              />
+              {/* 現有系統使用者姓名仍會出現在輸入建議中，方便快速選取；輸入
+                  完全相符的姓名時仍會連結該帳號（保留通知／權限功能）。 */}
+              <datalist id="owner-name-suggestions">
+                {users?.map((u) => u.name && <option key={u.id} value={u.name} />)}
+              </datalist>
             </div>
 
             {isEdit && (
