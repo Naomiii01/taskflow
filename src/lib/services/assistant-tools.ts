@@ -1,6 +1,6 @@
 import "server-only";
 
-import { differenceInCalendarDays } from "date-fns";
+import { differenceInCalendarDays, addDays, addWeeks, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Anthropic from "@anthropic-ai/sdk";
 
@@ -17,6 +17,7 @@ import * as checklistService from "@/lib/services/checklist-service";
 import * as waitingService from "@/lib/services/waiting-service";
 import * as supervisorService from "@/lib/services/supervisor-service";
 import { listProjectSummaries } from "@/lib/services/project-service";
+import * as calendarService from "@/lib/services/calendar-service";
 import {
   AIRCRAFT_TYPES,
   CROSS_DEPT_UNITS,
@@ -217,6 +218,29 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       type: "object",
       properties: {
         status: { type: "string", enum: ["Open", "In Progress", "Completed", "Cancelled"], description: "狀態篩選，省略則列出 Open + In Progress" },
+      },
+    },
+  },
+
+  // --- Phase 5.5: Calendar Planning Center -----------------------------
+  {
+    name: "get_calendar_events",
+    description:
+      "查詢行事曆上某段期間的工作安排，彙整手動新增事件、任務到期日、追蹤紀錄、主管交辦、等待回覆、專案里程碑等所有來源。" +
+      "用於回答「本週有哪些工作」「9/20有哪些工作」「KHH下週有哪些安排」「A321本月排程」之類的問題。" +
+      "指定 date 查詢單日；否則用 window 指定區間（預設 this_week）；可另外用 aircraft_type/station/project_code 篩選。",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "查詢單一日期，格式 YYYY-MM-DD（例如「9/20有哪些工作」）" },
+        window: {
+          type: "string",
+          enum: ["today", "tomorrow", "this_week", "next_week", "this_month"],
+          description: "查詢區間，省略且未指定 date 時預設 this_week",
+        },
+        aircraft_type: { type: "string", enum: [...AIRCRAFT_TYPES], description: "機型（選填）" },
+        station: { type: "string", enum: [...STATIONS], description: "基地（選填）" },
+        project_code: { type: "string", description: "專案代號關鍵字，例如 RMQ、KHH（選填）" },
       },
     },
   },
@@ -524,6 +548,60 @@ export async function executeTool(
           priority: t.priority,
           assignee: t.assignee?.name ?? null,
           assigner: t.assigner?.name ?? null,
+        })),
+      };
+    }
+
+    case "get_calendar_events": {
+      const dateArg = args.date as string | undefined;
+      const windowArg = (args.window as string) ?? "this_week";
+      const today = new Date();
+
+      let start: string;
+      let end: string;
+      if (dateArg) {
+        start = dateArg;
+        end = dateArg;
+      } else if (windowArg === "today") {
+        start = format(today, "yyyy-MM-dd");
+        end = start;
+      } else if (windowArg === "tomorrow") {
+        start = format(addDays(today, 1), "yyyy-MM-dd");
+        end = start;
+      } else if (windowArg === "next_week") {
+        const anchor = addWeeks(today, 1);
+        start = format(startOfWeek(anchor, { weekStartsOn: 1 }), "yyyy-MM-dd");
+        end = format(endOfWeek(anchor, { weekStartsOn: 1 }), "yyyy-MM-dd");
+      } else if (windowArg === "this_month") {
+        start = format(startOfMonth(today), "yyyy-MM-dd");
+        end = format(endOfMonth(today), "yyyy-MM-dd");
+      } else {
+        // this_week（預設）
+        start = format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
+        end = format(endOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
+      }
+
+      const items = await calendarService.listCalendarItems(supabase, {
+        start,
+        end,
+        aircraft_type: args.aircraft_type as string | undefined,
+        station: args.station as string | undefined,
+        project_code: args.project_code as string | undefined,
+      });
+
+      return {
+        start,
+        end,
+        count: items.length,
+        events: items.slice(0, 40).map((i) => ({
+          title: i.title,
+          date: i.date,
+          start_time: i.startTime,
+          end_time: i.endTime,
+          event_type: i.eventType,
+          station: i.station,
+          aircraft_type: i.aircraftType,
+          project_code: i.projectCode,
         })),
       };
     }
