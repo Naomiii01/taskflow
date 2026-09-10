@@ -90,7 +90,7 @@ export function KanbanCard({ task, onEdit }: { task: TaskRow; onEdit: (task: Tas
       </div>
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{task.department?.department_name ?? "未分配"}</span>
-        <OwnerAvatar name={task.owner?.name} />
+        <OwnerAvatar name={task.owner_name ?? task.owner?.name} />
       </div>
     </Card>
   );
