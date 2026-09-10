@@ -91,6 +91,31 @@ export function useDeleteNotification() {
   });
 }
 
+/** Bulk delete: same pattern as the task list's 一鍵勾選刪除 — reuses the
+ * single-notification DELETE endpoint (permission checks still apply per
+ * notification) via parallel requests instead of a new bulk API route. */
+export function useDeleteNotifications() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => fetchJson(`/api/notifications/${id}`, { method: "DELETE" }))
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      return { total: ids.length, failed };
+    },
+    onSuccess: ({ total, failed }) => {
+      if (failed > 0) {
+        toast.error(`已刪除 ${total - failed} 筆，${failed} 筆失敗`);
+      } else {
+        toast.success(`已刪除 ${total} 筆通知`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
 type NotificationSettings = {
   user_id: string;
   email_enabled: boolean;
