@@ -18,7 +18,7 @@ import { AttachmentList } from "@/components/attachments/attachment-list";
 import { UploadDropzone } from "@/components/attachments/upload-dropzone";
 import { Badge } from "@/components/ui/badge";
 import { useAttachments } from "@/hooks/use-attachments";
-import { useFollowups } from "@/hooks/use-followups";
+import { useDeleteFollowup, useFollowups } from "@/hooks/use-followups";
 import { useTaskLogs } from "@/hooks/use-task-logs";
 import { useDeleteTask, useTask } from "@/hooks/use-tasks";
 import {
@@ -39,10 +39,12 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
   const { data: logs } = useTaskLogs(taskId);
   const { data: attachmentsRes } = useAttachments({ task_id: taskId, pageSize: 100 });
   const deleteTask = useDeleteTask();
+  const deleteFollowup = useDeleteFollowup();
 
   const [editOpen, setEditOpen] = React.useState(false);
   const [followupOpen, setFollowupOpen] = React.useState(false);
   const [editingFollowup, setEditingFollowup] = React.useState<FollowupWithAuthor | null>(null);
+  const [deletingFollowup, setDeletingFollowup] = React.useState<FollowupWithAuthor | null>(null);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   if (isLoading) {
@@ -212,6 +214,7 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
                       setEditingFollowup(f);
                       setFollowupOpen(true);
                     }}
+                    onDelete={(f) => setDeletingFollowup(f)}
                   />
                 </TabsContent>
                 <TabsContent value="activity" className="pt-3">
@@ -245,6 +248,19 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
           await deleteTask.mutateAsync(task.id);
           setDeleteOpen(false);
           router.push("/tasks");
+        }}
+      />
+      <ConfirmDialog
+        open={!!deletingFollowup}
+        onOpenChange={(open) => !open && setDeletingFollowup(null)}
+        title="刪除追蹤紀錄"
+        description="確定要刪除這筆追蹤紀錄嗎？此動作無法復原。"
+        confirmLabel="刪除"
+        loading={deleteFollowup.isPending}
+        onConfirm={async () => {
+          if (!deletingFollowup) return;
+          await deleteFollowup.mutateAsync({ id: deletingFollowup.id, taskId: deletingFollowup.task_id });
+          setDeletingFollowup(null);
         }}
       />
     </div>
