@@ -77,6 +77,18 @@ export async function createFollowup(supabase: DB, values: FollowupFormValues, c
   return data;
 }
 
+/** Followups whose followup_date falls within [start, end] — used by the
+ * Calendar Planning Center to surface follow-up dates on the calendar. */
+export async function findFollowupsInRange(supabase: DB, start: string, end: string) {
+  const { data, error } = await supabase
+    .from("followups")
+    .select("id, task_id, followup_date, content")
+    .gte("followup_date", start)
+    .lte("followup_date", end);
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function findFollowupsByTasks(supabase: DB, taskIds: string[]) {
   if (!taskIds.length) return [];
   const { data, error } = await supabase
