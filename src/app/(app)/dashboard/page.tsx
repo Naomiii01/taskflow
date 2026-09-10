@@ -5,12 +5,9 @@ import {
   CalendarClock,
   CheckCircle2,
   ClockArrowUp,
-  FileSearch,
   Hourglass,
   ListTodo,
   Paperclip,
-  ScanText,
-  Sparkles,
   TrendingUp,
   TriangleAlert,
 } from "lucide-react";
@@ -91,17 +88,7 @@ export default async function DashboardPage() {
           <StatCard label="今日提醒" value={notificationStats.todayReminders} icon={Bell} />
           <StatCard label="超期數" value={notificationStats.overdueCount} icon={TriangleAlert} tone="critical" />
           <StatCard label="待追蹤數" value={notificationStats.needsFollowupCount} icon={Hourglass} tone="warning" />
-          <StatCard label="需升級數" value={notificationStats.needsEscalationCount} icon={AlarmClockCheck} tone="critical" />
-        </div>
-      </div>
-
-      <div>
-        <h2 className="mb-2 text-sm font-medium text-muted-foreground">文件智慧總覽</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard label="附件數量" value={documentStats.totalAttachments} icon={Paperclip} />
-          <StatCard label="OCR 完成數" value={documentStats.ocrCompleted} icon={ScanText} tone="success" />
-          <StatCard label="待分析數" value={documentStats.pendingAnalysis} icon={FileSearch} tone="warning" />
-          <StatCard label="AI 分析完成數" value={documentStats.aiCompleted} icon={Sparkles} tone="success" />
         </div>
       </div>
 
