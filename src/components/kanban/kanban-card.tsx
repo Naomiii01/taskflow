@@ -18,6 +18,7 @@ import {
 import { OwnerAvatar, PriorityBadge } from "@/components/tasks/task-badges";
 import { useUpdateTask, type TaskRow } from "@/hooks/use-tasks";
 import { TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/lib/constants";
+import { getDueUrgency, URGENCY_BORDER_CLASS, URGENCY_LABEL, URGENCY_TEXT_CLASS } from "@/lib/task-urgency";
 import type { TaskPriority } from "@/types/database.types";
 
 export function KanbanCard({ task, onEdit }: { task: TaskRow; onEdit: (task: TaskRow) => void }) {
@@ -31,11 +32,16 @@ export function KanbanCard({ task, onEdit }: { task: TaskRow; onEdit: (task: Tas
     ? { transform: CSS.Translate.toString(transform), zIndex: isDragging ? 50 : undefined }
     : undefined;
 
+  // 看板欄位仍然是狀態分類，卡片再依到期日的緊急程度加上左側色條/文字顏色 —
+  // 逾期或 3 天內到期是紅色，一週內到期是黃色，其餘（含已完成/已取消）不特別標色。
+  const urgency = getDueUrgency(task.due_date, task.status);
+  const urgencyLabel = URGENCY_LABEL[urgency];
+
   return (
     <Card
       ref={setNodeRef}
       style={style}
-      className={`gap-2 rounded-2xl border-border/70 p-3.5 shadow-soft transition-shadow hover:shadow-soft-lg ${isDragging ? "opacity-60 shadow-soft-lg" : ""}`}
+      className={`gap-2 rounded-2xl border-border/70 p-3.5 shadow-soft transition-shadow hover:shadow-soft-lg ${URGENCY_BORDER_CLASS[urgency]} ${isDragging ? "opacity-60 shadow-soft-lg" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div
@@ -86,7 +92,10 @@ export function KanbanCard({ task, onEdit }: { task: TaskRow; onEdit: (task: Tas
       </div>
       <div className="flex items-center justify-between">
         <PriorityBadge priority={task.priority} />
-        <span className="text-xs text-muted-foreground">{task.due_date ?? "無到期日"}</span>
+        <span className={`text-xs ${URGENCY_TEXT_CLASS[urgency]}`}>
+          {task.due_date ?? "無到期日"}
+          {urgencyLabel && <> · {urgencyLabel}</>}
+        </span>
       </div>
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{task.department?.department_name ?? "未分配"}</span>
