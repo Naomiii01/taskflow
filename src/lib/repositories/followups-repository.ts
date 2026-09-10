@@ -42,6 +42,11 @@ export async function updateFollowup(supabase: DB, id: string, values: FollowupU
   return data;
 }
 
+export async function deleteFollowupById(supabase: DB, id: string) {
+  const { error } = await supabase.from("followups").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function findLatestFollowupForTask(supabase: DB, taskId: string) {
   const { data, error } = await supabase
     .from("followups")
