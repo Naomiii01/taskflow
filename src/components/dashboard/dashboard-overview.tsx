@@ -19,6 +19,7 @@ import { TrendLineChart } from "@/components/dashboard/trend-line";
 import { MonthlyBarChart } from "@/components/dashboard/monthly-bar";
 import { DepartmentDelayTable } from "@/components/dashboard/department-delay-table";
 import { AiAssistantWidget } from "@/components/dashboard/ai-assistant-widget";
+import { UpcomingWeekWidget } from "@/components/dashboard/upcoming-week-widget";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   getCompletionRate,
@@ -84,7 +85,10 @@ export async function DashboardOverview() {
         </div>
       </div>
 
-      <AiAssistantWidget />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <AiAssistantWidget />
+        <UpcomingWeekWidget />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartCard title="任務完成率" description="不含已取消任務">
