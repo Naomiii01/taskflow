@@ -149,6 +149,7 @@ export interface Database {
           due_date: string | null;
           followup_date: string | null;
           owner_id: string | null;
+          owner_name: string | null;
           department_id: string | null;
           created_by: string | null;
           tags: string[];
@@ -179,6 +180,7 @@ export interface Database {
           due_date?: string | null;
           followup_date?: string | null;
           owner_id?: string | null;
+          owner_name?: string | null;
           department_id?: string | null;
           created_by?: string | null;
           tags?: string[];
