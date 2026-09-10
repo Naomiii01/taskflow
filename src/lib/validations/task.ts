@@ -21,7 +21,10 @@ export const taskFormSchema = z.object({
   description: z.string().trim().max(5000).nullable().optional(),
   priority: z.enum(TASK_PRIORITIES as [string, ...string[]], { message: "請選擇優先級" }),
   status: z.enum(TASK_STATUSES as [string, ...string[]]).optional(),
-  department_id: z.string().uuid("請選擇部門"),
+  // No longer collected in the task form (部門 was replaced by 提出需求單位 /
+  // source_department as the primary categorization) — kept nullable/optional
+  // so existing tasks that already have a department keep it untouched.
+  department_id: z.string().uuid().nullable().optional(),
   owner_id: z.string().uuid().nullable().optional(),
   owner_name: z.string().trim().max(100).nullable().optional(),
   due_date: z.string().nullable().optional(),
