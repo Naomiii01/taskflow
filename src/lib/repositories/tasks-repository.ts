@@ -14,6 +14,21 @@ function toDateOnly(d: Date) {
 }
 
 /**
+ * tasks.planning_month is a Postgres `date` column (stored as the 1st of the
+ * target month), but not every caller sends a full date: the task form's
+ * <input type="month"> and the recurring task engine's monthly templates
+ * both produce a bare "YYYY-MM" string, which Postgres rejects outright
+ * ("invalid input syntax for type date") and previously surfaced as a
+ * generic 500 on task creation. Normalizing here, at the repository
+ * boundary, fixes every caller (UI form, recurring task engine, future ones)
+ * in one place instead of relying on each one to format it correctly.
+ */
+function normalizePlanningMonth(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return /^\d{4}-\d{2}$/.test(value) ? `${value}-01` : value;
+}
+
+/**
  * Builds the filtered/sorted/paginated Supabase query for the task list +
  * search center. RLS still governs what a given user can actually see;
  * these filters are the user-facing narrowing on top of that.
@@ -105,6 +120,7 @@ export async function createTask(supabase: DB, values: TaskFormValues, createdBy
       status: (values.status ?? "Todo") as Database["taskflow"]["Enums"]["task_status"],
       department_id: values.department_id,
       owner_id: values.owner_id || null,
+      owner_name: values.owner_name || null,
       due_date: values.due_date || null,
       followup_date: values.followup_date || null,
       tags: values.tags ?? [],
@@ -113,7 +129,7 @@ export async function createTask(supabase: DB, values: TaskFormValues, createdBy
       aircraft_registration: values.aircraft_registration || null,
       station: (values.station || null) as Database["taskflow"]["Enums"]["station_enum"] | null,
       work_category: (values.work_category || null) as Database["taskflow"]["Enums"]["work_category_enum"] | null,
-      planning_month: values.planning_month || null,
+      planning_month: normalizePlanningMonth(values.planning_month),
       source_department: (values.source_department || null) as Database["taskflow"]["Enums"]["cross_dept_unit_enum"] | null,
       waiting_owner: (values.waiting_owner || null) as Database["taskflow"]["Enums"]["cross_dept_unit_enum"] | null,
       planning_status: (values.planning_status || null) as Database["taskflow"]["Enums"]["planning_status_enum"] | null,
@@ -137,6 +153,7 @@ export async function updateTask(supabase: DB, id: string, values: TaskUpdateVal
   if (values.status !== undefined) patch.status = values.status as Database["taskflow"]["Enums"]["task_status"];
   if (values.department_id !== undefined) patch.department_id = values.department_id;
   if (values.owner_id !== undefined) patch.owner_id = values.owner_id || null;
+  if (values.owner_name !== undefined) patch.owner_name = values.owner_name || null;
   if (values.due_date !== undefined) patch.due_date = values.due_date || null;
   if (values.followup_date !== undefined) patch.followup_date = values.followup_date || null;
   if (values.tags !== undefined) patch.tags = values.tags;
@@ -147,7 +164,7 @@ export async function updateTask(supabase: DB, id: string, values: TaskUpdateVal
     patch.station = (values.station || null) as Database["taskflow"]["Enums"]["station_enum"] | null;
   if (values.work_category !== undefined)
     patch.work_category = (values.work_category || null) as Database["taskflow"]["Enums"]["work_category_enum"] | null;
-  if (values.planning_month !== undefined) patch.planning_month = values.planning_month || null;
+  if (values.planning_month !== undefined) patch.planning_month = normalizePlanningMonth(values.planning_month);
   if (values.source_department !== undefined)
     patch.source_department = (values.source_department || null) as Database["taskflow"]["Enums"]["cross_dept_unit_enum"] | null;
   if (values.waiting_owner !== undefined)
