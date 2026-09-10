@@ -97,6 +97,9 @@ export function useUpdateTask() {
       toast.success("任務已更新");
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["task", variables.id] });
+      // Task 到期日可能在 Calendar Planning Center 被拖曳改期，這裡一併讓行事
+      // 曆重新抓取，不然拖完還要手動重新整理才看得到新位置。
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
