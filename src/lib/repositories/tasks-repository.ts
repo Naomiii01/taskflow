@@ -118,7 +118,7 @@ export async function createTask(supabase: DB, values: TaskFormValues, createdBy
       description: values.description || null,
       priority: values.priority as Database["taskflow"]["Enums"]["task_priority"],
       status: (values.status ?? "Todo") as Database["taskflow"]["Enums"]["task_status"],
-      department_id: values.department_id,
+      department_id: values.department_id || null,
       owner_id: values.owner_id || null,
       owner_name: values.owner_name || null,
       due_date: values.due_date || null,
@@ -151,7 +151,7 @@ export async function updateTask(supabase: DB, id: string, values: TaskUpdateVal
   if (values.priority !== undefined)
     patch.priority = values.priority as Database["taskflow"]["Enums"]["task_priority"];
   if (values.status !== undefined) patch.status = values.status as Database["taskflow"]["Enums"]["task_status"];
-  if (values.department_id !== undefined) patch.department_id = values.department_id;
+  if (values.department_id !== undefined) patch.department_id = values.department_id || null;
   if (values.owner_id !== undefined) patch.owner_id = values.owner_id || null;
   if (values.owner_name !== undefined) patch.owner_name = values.owner_name || null;
   if (values.due_date !== undefined) patch.due_date = values.due_date || null;
