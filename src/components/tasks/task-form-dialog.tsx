@@ -22,13 +22,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useDepartments, useFleet, useProjectOptions, useUsers } from "@/hooks/use-lookups";
+import { useFleet, useProjectOptions, useUsers } from "@/hooks/use-lookups";
 import { useCreateTask, useUpdateTask, type TaskRow } from "@/hooks/use-tasks";
 import {
   AIRCRAFT_TYPES,
   CROSS_DEPT_UNITS,
-  IMPACT_LEVELS,
-  IMPACT_LEVEL_LABELS,
   PLANNING_STATUSES,
   PLANNING_STATUS_LABELS,
   STATIONS,
@@ -65,7 +63,10 @@ function toFormValues(task?: TaskRow | null, initialTitle?: string): TaskFormVal
     description: task?.description ?? "",
     priority: task?.priority ?? "P3",
     status: task?.status,
-    department_id: task?.department_id ?? "",
+    // 部門 is no longer shown/edited in this form (replaced by 提出需求單位 /
+    // source_department below) — carried through unchanged so existing tasks
+    // that already have one don't lose it on save.
+    department_id: task?.department_id ?? null,
     owner_id: task?.owner_id ?? null,
     // Falls back to the joined system user's name for tasks that were
     // created before 負責人 became free text (owner_name wasn't set yet).
@@ -104,7 +105,6 @@ export function TaskFormDialog({
   onCreated?: (task: TaskRow) => void;
 }) {
   const isEdit = !!task;
-  const { data: departments } = useDepartments();
   const { data: users } = useUsers();
   const { data: projects } = useProjectOptions();
   const createTask = useCreateTask();
@@ -135,7 +135,6 @@ export function TaskFormDialog({
     }
   }, [open, task, initialTitle, reset]);
 
-  const departmentId = watch("department_id");
   const priority = watch("priority");
   const status = watch("status");
   const aircraftType = watch("aircraft_type");
@@ -145,7 +144,6 @@ export function TaskFormDialog({
   const sourceDepartment = watch("source_department");
   const waitingOwner = watch("waiting_owner");
   const planningStatus = watch("planning_status");
-  const impactLevel = watch("impact_level");
   const projectId = watch("project_id");
 
   // Aircraft Type 選擇後 Aircraft Registration 自動過濾（切換機型時清空原本的機號）。
@@ -233,71 +231,35 @@ export function TaskFormDialog({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label>部門 *</Label>
-              <Select value={departmentId} onValueChange={(v) => setValue("department_id", v)}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="選擇部門" /></SelectTrigger>
+              <Label>提出需求單位</Label>
+              <Select
+                value={sourceDepartment ?? NONE}
+                onValueChange={(v) => setValue("source_department", v === NONE ? null : v)}
+              >
+                <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
                 <SelectContent>
-                  {departments?.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>{d.department_name}</SelectItem>
+                  <SelectItem value={NONE}>未指定</SelectItem>
+                  {CROSS_DEPT_UNITS.map((u) => (
+                    <SelectItem key={u} value={u}>{u}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {errors.department_id && <p className="text-xs text-destructive">{errors.department_id.message}</p>}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          {isEdit && (
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="owner_name">負責人</Label>
-              <Input
-                id="owner_name"
-                {...register("owner_name")}
-                list="owner-name-suggestions"
-                placeholder="輸入姓名（可不是系統使用者）"
-                autoComplete="off"
-              />
-              {/* 現有系統使用者姓名仍會出現在輸入建議中，方便快速選取；輸入
-                  完全相符的姓名時仍會連結該帳號（保留通知／權限功能）。 */}
-              <datalist id="owner-name-suggestions">
-                {users?.map((u) => u.name && <option key={u.id} value={u.name} />)}
-              </datalist>
+              <Label>狀態</Label>
+              <Select value={status} onValueChange={(v) => setValue("status", v as TaskFormValues["status"])}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TASK_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{TASK_STATUS_LABELS[s]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-
-            {isEdit && (
-              <div className="flex flex-col gap-1.5">
-                <Label>狀態</Label>
-                <Select value={status} onValueChange={(v) => setValue("status", v as TaskFormValues["status"])}>
-                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TASK_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{TASK_STATUS_LABELS[s]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="due_date">到期日</Label>
-              <Input id="due_date" type="date" {...register("due_date")} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="followup_date">追蹤日</Label>
-              <Input id="followup_date" type="date" {...register("followup_date")} />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="tags">標籤</Label>
-            <Input
-              id="tags"
-              value={tagsInput}
-              onChange={(e) => setTagsInput(e.target.value)}
-              placeholder="以逗號分隔，例如：VIP, 續約"
-            />
-          </div>
+          )}
 
           <div className="border-t pt-4">
             <p className="mb-3 text-sm font-medium text-muted-foreground">航空維修 Planning</p>
@@ -372,11 +334,6 @@ export function TaskFormDialog({
 
             <div className="mt-4 grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="planning_month">Planning Month</Label>
-                <Input id="planning_month" type="month" {...register("planning_month")} />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
                 <Label>Planning Status</Label>
                 <Select
                   value={planningStatus ?? NONE}
@@ -387,24 +344,6 @@ export function TaskFormDialog({
                     <SelectItem value={NONE}>未指定</SelectItem>
                     {PLANNING_STATUSES.map((s) => (
                       <SelectItem key={s} value={s}>{PLANNING_STATUS_LABELS[s]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label>Source Department（需求來源）</Label>
-                <Select
-                  value={sourceDepartment ?? NONE}
-                  onValueChange={(v) => setValue("source_department", v === NONE ? null : v)}
-                >
-                  <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>未指定</SelectItem>
-                    {CROSS_DEPT_UNITS.map((u) => (
-                      <SelectItem key={u} value={u}>{u}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -429,22 +368,6 @@ export function TaskFormDialog({
 
             <div className="mt-4 grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label>Impact Level</Label>
-                <Select
-                  value={impactLevel ?? NONE}
-                  onValueChange={(v) => setValue("impact_level", v === NONE ? null : v)}
-                >
-                  <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>未指定</SelectItem>
-                    {IMPACT_LEVELS.map((l) => (
-                      <SelectItem key={l} value={l}>{IMPACT_LEVEL_LABELS[l]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
                 <Label>Project（專案）</Label>
                 <Select value={projectId ?? NONE} onValueChange={(v) => setValue("project_id", v === NONE ? null : v)}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
@@ -457,6 +380,39 @@ export function TaskFormDialog({
                 </Select>
               </div>
             </div>
+          </div>
+
+          <div className="border-t pt-4 grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="owner_name">負責人</Label>
+              <Input
+                id="owner_name"
+                {...register("owner_name")}
+                list="owner-name-suggestions"
+                placeholder="輸入姓名（可不是系統使用者）"
+                autoComplete="off"
+              />
+              {/* 現有系統使用者姓名仍會出現在輸入建議中，方便快速選取；輸入
+                  完全相符的姓名時仍會連結該帳號（保留通知／權限功能）。 */}
+              <datalist id="owner-name-suggestions">
+                {users?.map((u) => u.name && <option key={u.id} value={u.name} />)}
+              </datalist>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="due_date">到期日</Label>
+              <Input id="due_date" type="date" {...register("due_date")} />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tags">標籤</Label>
+            <Input
+              id="tags"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              placeholder="以逗號分隔，例如：VIP, 續約"
+            />
           </div>
 
           <DialogFooter>
