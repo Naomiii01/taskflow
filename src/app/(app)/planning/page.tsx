@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { PlanningHubTabs } from "@/components/planning/planning-hub-tabs";
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
-import { KanbanClient } from "@/app/(app)/kanban/kanban-client";
+import { TasksClient } from "@/app/(app)/tasks/tasks-client";
 import { PlanningClient } from "./planning-client";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -28,7 +28,7 @@ export default async function PlanningPage() {
 
       <PlanningHubTabs
         overview={<DashboardOverview />}
-        kanban={<KanbanClient showHeader={false} />}
+        tasks={<TasksClient showHeader={false} />}
         planning={<PlanningClient showHeader={false} />}
       />
     </div>
