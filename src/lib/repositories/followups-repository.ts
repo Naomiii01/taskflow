@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
-import type { FollowupFormValues } from "@/lib/validations/followup";
+import type { FollowupFormValues, FollowupUpdateValues } from "@/lib/validations/followup";
 
 type DB = SupabaseClient<Database, "taskflow">;
 
@@ -16,6 +16,30 @@ export async function findFollowupsByTask(supabase: DB, taskId: string) {
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+export async function findFollowupById(supabase: DB, id: string) {
+  const { data, error } = await supabase.from("followups").select(FOLLOWUP_SELECT).eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFollowup(supabase: DB, id: string, values: FollowupUpdateValues) {
+  const patch: Database["taskflow"]["Tables"]["followups"]["Update"] = {};
+  if (values.followup_date !== undefined) patch.followup_date = values.followup_date;
+  if (values.department_name !== undefined) patch.department_name = values.department_name || null;
+  if (values.content !== undefined) patch.content = values.content;
+  if (values.result !== undefined) patch.result = values.result || null;
+  if (values.next_action !== undefined) patch.next_action = values.next_action || null;
+
+  const { data, error } = await supabase
+    .from("followups")
+    .update(patch)
+    .eq("id", id)
+    .select(FOLLOWUP_SELECT)
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function findLatestFollowupForTask(supabase: DB, taskId: string) {
