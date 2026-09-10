@@ -116,7 +116,7 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
                 <dt className="text-muted-foreground">部門</dt>
                 <dd>{task.department?.department_name ?? "未分配"}</dd>
                 <dt className="text-muted-foreground">負責人</dt>
-                <dd><OwnerAvatar name={task.owner?.name} /></dd>
+                <dd><OwnerAvatar name={task.owner_name ?? task.owner?.name} /></dd>
                 <dt className="text-muted-foreground">到期日</dt>
                 <dd>{task.due_date ?? "—"}</dd>
                 <dt className="text-muted-foreground">追蹤日</dt>
