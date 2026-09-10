@@ -299,3 +299,37 @@ export type PlanningAnalytics = {
   byStation: PlanningAnalyticsBreakdown;
   byWorkCategory: PlanningAnalyticsBreakdown;
 };
+
+// --- Phase 5.5: Calendar Planning Center -----------------------------------
+
+/** What every calendar source (calendar_events, tasks, followups,
+ * supervisor_tasks, waiting_items, project_milestones) gets normalized into
+ * before rendering, so every calendar view only ever deals with one shape. */
+export type CalendarItemSource =
+  | "calendar_event"
+  | "task"
+  | "followup"
+  | "supervisor_task"
+  | "waiting_item"
+  | "milestone";
+
+export type CalendarItem = {
+  /** Composite id ("<source>:<row id>") — unique across sources for React keys. */
+  id: string;
+  source: CalendarItemSource;
+  /** The underlying row's own id (task id, followup id, calendar_events id, …). */
+  sourceId: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  startTime: string | null;
+  endTime: string | null;
+  eventType: import("./database.types").CalendarEventType | null;
+  priority: import("./database.types").TaskPriority | null;
+  station: import("./database.types").Station | null;
+  aircraftType: import("./database.types").AircraftType | null;
+  projectCode: string | null;
+  /** Only calendar_events and tasks currently support drag-to-reschedule /
+   * inline edit from the calendar (see calendar-service.ts for why). */
+  editable: boolean;
+  href: string | null;
+};
