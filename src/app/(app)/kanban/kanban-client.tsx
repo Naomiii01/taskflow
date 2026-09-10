@@ -8,7 +8,7 @@ import { KanbanBoard } from "@/components/kanban/kanban-board";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { useTasks, type TaskRow } from "@/hooks/use-tasks";
 
-export function KanbanClient() {
+export function KanbanClient({ showHeader = true }: { showHeader?: boolean }) {
   const { data, isLoading } = useTasks({ page: 1, pageSize: 200, sortBy: "updated_at", sortDir: "desc" });
   const [formOpen, setFormOpen] = React.useState(false);
   const [editingTask, setEditingTask] = React.useState<TaskRow | null>(null);
@@ -16,10 +16,14 @@ export function KanbanClient() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">看板</h1>
-          <p className="text-sm text-muted-foreground">拖曳卡片即可即時更新任務狀態。</p>
-        </div>
+        {showHeader ? (
+          <div>
+            <h1 className="text-xl font-semibold">看板</h1>
+            <p className="text-sm text-muted-foreground">拖曳卡片即可即時更新任務狀態，卡片色條代表到期日緊急程度。</p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">拖曳卡片即可即時更新任務狀態，卡片色條代表到期日緊急程度。</p>
+        )}
         <Button
           onClick={() => {
             setEditingTask(null);
