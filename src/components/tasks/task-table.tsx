@@ -155,7 +155,7 @@ export function TaskTable({
                   {new Date(task.updated_at).toLocaleDateString("zh-TW")}
                 </TableCell>
                 <TableCell>{task.department?.department_name ?? "未分配"}</TableCell>
-                <TableCell><OwnerAvatar name={task.owner?.name} /></TableCell>
+                <TableCell><OwnerAvatar name={task.owner_name ?? task.owner?.name} /></TableCell>
                 <TableCell><SmartFollowupIndicator state={task.smartFollowup} /></TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
