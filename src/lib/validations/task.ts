@@ -23,6 +23,7 @@ export const taskFormSchema = z.object({
   status: z.enum(TASK_STATUSES as [string, ...string[]]).optional(),
   department_id: z.string().uuid("請選擇部門"),
   owner_id: z.string().uuid().nullable().optional(),
+  owner_name: z.string().trim().max(100).nullable().optional(),
   due_date: z.string().nullable().optional(),
   followup_date: z.string().nullable().optional(),
   tags: z.array(z.string().trim().min(1)).max(20).optional(),
