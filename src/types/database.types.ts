@@ -91,6 +91,24 @@ export type FollowUpEntityType = "task" | "waiting_item" | "supervisor_task";
 
 export type SupervisorTaskStatus = "Open" | "In Progress" | "Completed" | "Cancelled";
 
+// --- Phase 5.5: Calendar Planning Center -----------------------------------
+
+/** Type of a manually-created ("Quick Add") calendar_events row. Tasks/
+ * Follow-ups/Supervisor Tasks/Waiting Items/Project Milestones are NOT
+ * stored here — they're read directly from their own tables and merged in
+ * at query time (see lib/services/calendar-service.ts). */
+export type CalendarEventType =
+  | "Daily"
+  | "Follow-up"
+  | "Meeting"
+  | "Project"
+  | "Supervisor"
+  | "Waiting"
+  | "Monthly Plan"
+  | "Long Hour"
+  | "Short Term"
+  | "Additional Work Card";
+
 export interface Database {
   taskflow: {
     Tables: {
@@ -292,6 +310,44 @@ export interface Database {
             columns: ["task_id"];
             isOneToOne: false;
             referencedRelation: "tasks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      calendar_events: {
+        Row: {
+          id: string;
+          title: string;
+          event_date: string;
+          start_time: string | null;
+          end_time: string | null;
+          event_type: CalendarEventType;
+          priority: TaskPriority | null;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          event_date: string;
+          start_time?: string | null;
+          end_time?: string | null;
+          event_type?: CalendarEventType;
+          priority?: TaskPriority | null;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["taskflow"]["Tables"]["calendar_events"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "calendar_events_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
             referencedColumns: ["id"];
           },
         ];
@@ -1080,6 +1136,7 @@ export interface Database {
       impact_level_enum: ImpactLevel;
       recurrence_frequency_enum: RecurrenceFrequency;
       cross_dept_unit_enum: CrossDeptUnit;
+      calendar_event_type: CalendarEventType;
     };
     CompositeTypes: Record<string, never>;
   };
