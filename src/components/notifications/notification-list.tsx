@@ -19,10 +19,13 @@ import type { LucideIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { NOTIFICATION_TYPE_BADGE, NOTIFICATION_TYPE_LABELS } from "@/lib/constants";
 import { useDeleteNotification, useMarkNotificationRead } from "@/hooks/use-notifications";
 import type { NotificationWithTask } from "@/types/domain";
 import type { NotificationType } from "@/types/database.types";
+
+const EMPTY_SELECTION = new Set<string>();
 
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   task_assigned: ListTodo,
@@ -41,12 +44,35 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
 export function NotificationList({
   notifications,
   emptyMessage = "目前沒有通知",
+  selectedIds,
+  onSelectionChange,
 }: {
   notifications: NotificationWithTask[];
   emptyMessage?: string;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (ids: Set<string>) => void;
 }) {
   const markRead = useMarkNotificationRead();
   const deleteNotification = useDeleteNotification();
+
+  const selection = selectedIds ?? EMPTY_SELECTION;
+  const setSelection = onSelectionChange ?? (() => {});
+
+  const allSelected = notifications.length > 0 && notifications.every((n) => selection.has(n.id));
+  const someSelected = notifications.some((n) => selection.has(n.id)) && !allSelected;
+
+  const toggleOne = (id: string, checked: boolean) => {
+    const next = new Set(selection);
+    if (checked) next.add(id);
+    else next.delete(id);
+    setSelection(next);
+  };
+
+  const toggleAll = (checked: boolean) => {
+    const next = new Set(selection);
+    notifications.forEach((n) => (checked ? next.add(n.id) : next.delete(n.id)));
+    setSelection(next);
+  };
 
   if (!notifications.length) {
     return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
@@ -54,6 +80,16 @@ export function NotificationList({
 
   return (
     <div className="flex flex-col divide-y overflow-hidden rounded-xl border border-border/70">
+      {onSelectionChange && (
+        <label className="flex items-center gap-2 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <Checkbox
+            aria-label="全選"
+            checked={someSelected ? "indeterminate" : allSelected}
+            onCheckedChange={(checked) => toggleAll(checked === true)}
+          />
+          全選本頁（{notifications.length} 筆）
+        </label>
+      )}
       {notifications.map((n) => {
         const Icon = TYPE_ICON[n.type] ?? Bell;
         const body = (
@@ -80,6 +116,14 @@ export function NotificationList({
 
         return (
           <div key={n.id} className="flex items-start gap-2 p-3 hover:bg-muted/50">
+            {onSelectionChange && (
+              <Checkbox
+                aria-label={`選取 ${n.title}`}
+                className="mt-1"
+                checked={selection.has(n.id)}
+                onCheckedChange={(checked) => toggleOne(n.id, checked === true)}
+              />
+            )}
             {n.related_task_id ? (
               <Link
                 href={`/tasks/${n.related_task_id}`}
