@@ -1,6 +1,15 @@
+import { Pencil } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import type { FollowupWithAuthor } from "@/types/domain";
 
-export function FollowupTimeline({ followups }: { followups: FollowupWithAuthor[] }) {
+export function FollowupTimeline({
+  followups,
+  onEdit,
+}: {
+  followups: FollowupWithAuthor[];
+  onEdit?: (followup: FollowupWithAuthor) => void;
+}) {
   if (!followups.length) {
     return <p className="text-sm text-muted-foreground">尚無追蹤紀錄，點右上角「新增追蹤紀錄」開始記錄。</p>;
   }
@@ -16,17 +25,28 @@ export function FollowupTimeline({ followups }: { followups: FollowupWithAuthor[
                 <span className="rounded-full bg-muted px-2 py-0.5">{f.department_name}</span>
               )}
               <span>{f.author?.name ?? "—"}</span>
+              {onEdit && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={() => onEdit(f)}
+                  aria-label="編輯追蹤紀錄"
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+              )}
             </div>
           </div>
-          <p className="mt-2 text-sm">{f.content}</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm">{f.content}</p>
           {f.result && (
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
               <span className="font-medium text-foreground">結果：</span>
               {f.result}
             </p>
           )}
           {f.next_action && (
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
               <span className="font-medium text-foreground">下一步：</span>
               {f.next_action}
             </p>
