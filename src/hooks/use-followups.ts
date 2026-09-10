@@ -39,6 +39,21 @@ export function useAddFollowup() {
   });
 }
 
+export function useDeleteFollowup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; taskId: string }) =>
+      fetchJson<{ ok: true }>(`/api/followups/${id}`, { method: "DELETE" }),
+    onSuccess: (_data, variables) => {
+      toast.success("已刪除追蹤紀錄");
+      queryClient.invalidateQueries({ queryKey: ["followups", variables.taskId] });
+      queryClient.invalidateQueries({ queryKey: ["task", variables.taskId] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
 export function useUpdateFollowup() {
   const queryClient = useQueryClient();
   return useMutation({
