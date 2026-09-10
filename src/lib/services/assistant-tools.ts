@@ -413,7 +413,12 @@ export async function executeTool(
       if (station) tasks = tasks.filter((t) => t.station === station);
       if (workCategory) tasks = tasks.filter((t) => t.work_category === workCategory);
       if (planningStatus) tasks = tasks.filter((t) => t.planning_status === planningStatus);
-      if (planningMonth) tasks = tasks.filter((t) => t.planning_month === planningMonth);
+      // t.planning_month is stored as a full date ("YYYY-MM-01"); the AI tool's
+      // schema documents planning_month as "YYYY-MM", so compare by prefix
+      // rather than exact match (a straight === here would silently match
+      // nothing, same underlying format mismatch that caused task creation
+      // to fail against Postgres before it was normalized in the repository).
+      if (planningMonth) tasks = tasks.filter((t) => t.planning_month?.startsWith(planningMonth));
       if (waitingOwner) tasks = tasks.filter((t) => t.waiting_owner === waitingOwner);
       if (dueBefore) tasks = tasks.filter((t) => t.due_date && t.due_date <= dueBefore);
       if (dueAfter) tasks = tasks.filter((t) => t.due_date && t.due_date >= dueAfter);
