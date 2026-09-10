@@ -45,6 +45,12 @@ async function loadTasks(): Promise<TaskRow[]> {
   const { data, error } = await supabase
     .from("tasks")
     .select("status, due_date, created_at, updated_at, department:departments(department_name)")
+    // Was missing this filter, so every dashboard number derived from
+    // loadTasks() (今日/本週待辦、追蹤中、已完成、超期、部門工作量、任務完成率、
+    // 趨勢圖) was counting soft-deleted tasks too — including old seed/demo
+    // data — which is why the dashboard looked busy even with zero real
+    // active tasks.
+    .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
   if (error) {
