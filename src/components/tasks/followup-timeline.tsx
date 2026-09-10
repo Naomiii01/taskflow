@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { FollowupWithAuthor } from "@/types/domain";
@@ -6,9 +6,11 @@ import type { FollowupWithAuthor } from "@/types/domain";
 export function FollowupTimeline({
   followups,
   onEdit,
+  onDelete,
 }: {
   followups: FollowupWithAuthor[];
   onEdit?: (followup: FollowupWithAuthor) => void;
+  onDelete?: (followup: FollowupWithAuthor) => void;
 }) {
   if (!followups.length) {
     return <p className="text-sm text-muted-foreground">尚無追蹤紀錄，點右上角「新增追蹤紀錄」開始記錄。</p>;
@@ -34,6 +36,17 @@ export function FollowupTimeline({
                   aria-label="編輯追蹤紀錄"
                 >
                   <Pencil className="size-3.5" />
+                </Button>
+              )}
+              {onDelete && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 text-destructive hover:text-destructive"
+                  onClick={() => onDelete(f)}
+                  aria-label="刪除追蹤紀錄"
+                >
+                  <Trash2 className="size-3.5" />
                 </Button>
               )}
             </div>
