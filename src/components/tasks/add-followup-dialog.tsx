@@ -15,25 +15,57 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAddFollowup } from "@/hooks/use-followups";
+import { useAddFollowup, useUpdateFollowup } from "@/hooks/use-followups";
 import { followupFormSchema, type FollowupFormValues } from "@/lib/validations/followup";
+import type { FollowupWithAuthor } from "@/types/domain";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function emptyValues(taskId: string, defaultDepartment?: string | null): FollowupFormValues {
+  return {
+    task_id: taskId,
+    followup_date: today(),
+    department_name: defaultDepartment ?? "",
+    content: "",
+    result: "",
+    next_action: "",
+  };
+}
+
+function valuesFromFollowup(followup: FollowupWithAuthor): FollowupFormValues {
+  return {
+    task_id: followup.task_id,
+    followup_date: followup.followup_date,
+    department_name: followup.department_name ?? "",
+    content: followup.content ?? "",
+    result: followup.result ?? "",
+    next_action: followup.next_action ?? "",
+  };
+}
+
+/**
+ * 新增／編輯追蹤紀錄共用同一個表單 — 傳入 `followup` 就是編輯既有紀錄（例如
+ * 打錯字要能訂正），不傳就是新增一筆。跟 TaskFormDialog 新增/編輯共用同一個
+ * dialog 的做法一致。
+ */
 export function AddFollowupDialog({
   open,
   onOpenChange,
   taskId,
   defaultDepartment,
+  followup,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   taskId: string;
   defaultDepartment?: string | null;
+  followup?: FollowupWithAuthor | null;
 }) {
+  const isEditing = !!followup;
   const addFollowup = useAddFollowup();
+  const updateFollowup = useUpdateFollowup();
   const {
     register,
     handleSubmit,
@@ -41,31 +73,26 @@ export function AddFollowupDialog({
     formState: { errors, isSubmitting },
   } = useForm<FollowupFormValues>({
     resolver: zodResolver(followupFormSchema),
-    defaultValues: {
-      task_id: taskId,
-      followup_date: today(),
-      department_name: defaultDepartment ?? "",
-      content: "",
-      result: "",
-      next_action: "",
-    },
+    defaultValues: emptyValues(taskId, defaultDepartment),
   });
 
   React.useEffect(() => {
     if (open) {
-      reset({
-        task_id: taskId,
-        followup_date: today(),
-        department_name: defaultDepartment ?? "",
-        content: "",
-        result: "",
-        next_action: "",
-      });
+      reset(followup ? valuesFromFollowup(followup) : emptyValues(taskId, defaultDepartment));
     }
-  }, [open, taskId, defaultDepartment, reset]);
+  }, [open, taskId, defaultDepartment, followup, reset]);
 
   const onSubmit = async (values: FollowupFormValues) => {
-    await addFollowup.mutateAsync(values);
+    if (isEditing && followup) {
+      const { followup_date, department_name, content, result, next_action } = values;
+      await updateFollowup.mutateAsync({
+        id: followup.id,
+        taskId: followup.task_id,
+        values: { followup_date, department_name, content, result, next_action },
+      });
+    } else {
+      await addFollowup.mutateAsync(values);
+    }
     onOpenChange(false);
   };
 
@@ -73,7 +100,7 @@ export function AddFollowupDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>新增追蹤紀錄</DialogTitle>
+          <DialogTitle>{isEditing ? "編輯追蹤紀錄" : "新增追蹤紀錄"}</DialogTitle>
           <DialogDescription>紀錄這次跟進的內容、結果與下一步行動。</DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
@@ -112,7 +139,7 @@ export function AddFollowupDialog({
               取消
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              新增紀錄
+              {isEditing ? "儲存變更" : "新增紀錄"}
             </Button>
           </DialogFooter>
         </form>
