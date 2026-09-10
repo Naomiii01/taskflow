@@ -23,7 +23,7 @@ export function AiBriefingCenter() {
         {isLoading && <Skeleton className="h-24 w-full" />}
         {briefing && (
           <>
-            <p className="text-sm leading-relaxed">{briefing.narrative}</p>
+            <p className="whitespace-pre-line text-sm leading-relaxed">{briefing.narrative}</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground sm:grid-cols-4">
               <span>退工件數：{briefing.returnedWorkCount}</span>
               <span>新增工單：{briefing.newWorkOrderCount}</span>
