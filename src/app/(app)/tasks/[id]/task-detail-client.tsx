@@ -42,6 +42,7 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
 
   const [editOpen, setEditOpen] = React.useState(false);
   const [followupOpen, setFollowupOpen] = React.useState(false);
+  const [editingFollowup, setEditingFollowup] = React.useState<FollowupWithAuthor | null>(null);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   if (isLoading) {
@@ -188,7 +189,13 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle>追蹤與異動紀錄</CardTitle>
-              <Button size="sm" onClick={() => setFollowupOpen(true)}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingFollowup(null);
+                  setFollowupOpen(true);
+                }}
+              >
                 <Plus className="size-3.5" /> 新增追蹤紀錄
               </Button>
             </CardHeader>
@@ -199,7 +206,13 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
                   <TabsTrigger value="activity">異動時間軸</TabsTrigger>
                 </TabsList>
                 <TabsContent value="followups" className="pt-3">
-                  <FollowupTimeline followups={(followupsRes?.data ?? []) as FollowupWithAuthor[]} />
+                  <FollowupTimeline
+                    followups={(followupsRes?.data ?? []) as FollowupWithAuthor[]}
+                    onEdit={(f) => {
+                      setEditingFollowup(f);
+                      setFollowupOpen(true);
+                    }}
+                  />
                 </TabsContent>
                 <TabsContent value="activity" className="pt-3">
                   <ActivityTimeline logs={(logs ?? []) as unknown as TaskLogWithUser[]} />
@@ -213,9 +226,13 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
       <TaskFormDialog open={editOpen} onOpenChange={setEditOpen} task={task} />
       <AddFollowupDialog
         open={followupOpen}
-        onOpenChange={setFollowupOpen}
+        onOpenChange={(open) => {
+          setFollowupOpen(open);
+          if (!open) setEditingFollowup(null);
+        }}
         taskId={task.id}
         defaultDepartment={task.department?.department_name}
+        followup={editingFollowup}
       />
       <ConfirmDialog
         open={deleteOpen}
