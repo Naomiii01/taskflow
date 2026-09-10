@@ -1,6 +1,7 @@
 import type {
   AircraftType,
   AttachmentCategory,
+  CalendarEventType,
   CrossDeptUnit,
   FollowUpEntityType,
   ImpactLevel,
@@ -381,3 +382,31 @@ export const PLANNING_MONTHLY_MILESTONES = [
   { day: 15, label: "修管月計畫整理" },
   { day: 20, label: "長工時／人力／工期安排完成期限" },
 ] as const;
+
+// --- Phase 5.5: Calendar Planning Center -----------------------------------
+
+export const CALENDAR_EVENT_TYPES: CalendarEventType[] = [
+  "Daily",
+  "Follow-up",
+  "Meeting",
+  "Project",
+  "Supervisor",
+  "Waiting",
+  "Monthly Plan",
+  "Long Hour",
+  "Short Term",
+  "Additional Work Card",
+];
+
+export const CALENDAR_EVENT_TYPE_LABELS: Record<CalendarEventType, string> = {
+  Daily: "每日",
+  "Follow-up": "追蹤",
+  Meeting: "會議",
+  Project: "專案",
+  Supervisor: "主管交辦",
+  Waiting: "等待回覆",
+  "Monthly Plan": "月計畫",
+  "Long Hour": "長工時",
+  "Short Term": "短天期",
+  "Additional Work Card": "額外工卡",
+};
