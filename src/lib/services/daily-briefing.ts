@@ -37,7 +37,7 @@ function buildFallbackNarrative(stats: {
   return (
     `今日檢查清單完成度 ${stats.checklistCompletionRate}%，` +
     `目前有 ${stats.waitingCount} 件跨部門等待回覆事項、${stats.supervisorOpenCount} 件主管交辦事項待處理、` +
-    `${stats.overdueCount} 件任務已超期。${stats.riskNote}`
+    `${stats.overdueCount} 件任務已超期。\n\n${stats.riskNote}`
   );
 }
 
@@ -89,8 +89,9 @@ export async function computeDailyBriefing(supabase: DB): Promise<PlanningBriefi
     isToday: m.day === today.getDate(),
   }));
 
+  // 每一項風險任務各自佔一行（不要擠成一長串），最後補一句建議處理。
   const riskNote = topRisks.length
-    ? `AI 風險提醒：${topRisks.map((r) => `${r.title}（風險分數 ${r.score}）`).join("、")}，建議優先處理。`
+    ? `AI 風險提醒：\n${topRisks.map((r) => `• ${r.title}（風險分數 ${r.score}）`).join("\n")}\n建議優先處理。`
     : "AI 風險提醒：目前無明顯高風險任務。";
 
   const stats = {
@@ -122,7 +123,7 @@ export async function computeDailyBriefing(supabase: DB): Promise<PlanningBriefi
             `退工件數：${stats.returnedWorkCount}\n新增工單件數：${stats.newWorkOrderCount}\n` +
             `跨部門等待回覆：${stats.waitingCount} 件\n主管交辦待處理：${stats.supervisorOpenCount} 件\n超期任務：${stats.overdueCount} 件\n` +
             `本週重點工作：${thisWeekHighlights.join("、") || "無"}\n${riskNote}\n` +
-            `只回傳摘要文字，不要加標題或條列符號。`,
+            `只回傳摘要文字，不要加標題。若提到 AI 風險提醒的多個項目，請每個項目換一行列出，不要擠成一長串。`,
         },
       ],
     });
