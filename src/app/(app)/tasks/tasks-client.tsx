@@ -11,7 +11,7 @@ import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { TaskTable } from "@/components/tasks/task-table";
 import { useDeleteTask, useDeleteTasks, useTasks, type TaskFilters, type TaskRow } from "@/hooks/use-tasks";
 
-export function TasksClient() {
+export function TasksClient({ showHeader = true }: { showHeader?: boolean }) {
   const [filters, setFilters] = React.useState<TaskFilters>({
     sortBy: "updated_at",
     sortDir: "desc",
@@ -31,10 +31,14 @@ export function TasksClient() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">任務列表</h1>
+        {showHeader ? (
+          <div>
+            <h1 className="text-xl font-semibold">任務列表</h1>
+            <p className="text-sm text-muted-foreground">跨部門任務追蹤，共 {data?.total ?? 0} 筆任務。</p>
+          </div>
+        ) : (
           <p className="text-sm text-muted-foreground">跨部門任務追蹤，共 {data?.total ?? 0} 筆任務。</p>
-        </div>
+        )}
         <Button
           onClick={() => {
             setEditingTask(null);
