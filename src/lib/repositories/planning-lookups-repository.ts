@@ -6,9 +6,13 @@ type DB = SupabaseClient<Database, "taskflow">;
 
 // --- Fleet Master ----------------------------------------------------------
 
-export async function findAllFleet(supabase: DB, aircraftType?: string) {
+/** Pass one or more aircraft types to filter registrations to those fleets —
+ * the task form's Aircraft Type field is multi-select, so the Aircraft
+ * Registration cascade needs to show the union of matching aircraft. */
+export async function findAllFleet(supabase: DB, aircraftTypes?: string[]) {
   let q = supabase.from("fleet_master").select("*").order("aircraft_registration");
-  if (aircraftType) q = q.eq("aircraft_type", aircraftType as Database["taskflow"]["Enums"]["aircraft_type_enum"]);
+  if (aircraftTypes?.length)
+    q = q.in("aircraft_type", aircraftTypes as Database["taskflow"]["Enums"]["aircraft_type_enum"][]);
   const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
