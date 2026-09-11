@@ -70,6 +70,16 @@ function breakdown<T extends string>(tasks: { value: T | null }[], keys: readonl
   }));
 }
 
+/** Same as `breakdown`, but for the now multi-select aircraft_type/station
+ * columns — a task with more than one selected value counts toward each of
+ * its buckets (a job spanning A321+A339 adds one to both, not neither). */
+function breakdownMulti<T extends string>(tasks: { values: T[] }[], keys: readonly T[], labels?: Record<T, string>): PlanningAnalyticsBreakdown {
+  return keys.map((key) => ({
+    label: labels ? labels[key] : key,
+    count: tasks.filter((t) => t.values.includes(key)).length,
+  }));
+}
+
 /** Analytics Enhancement: A321/A339/A351/A359工作量, TPE/TSA/RMQ/KHH工作量,
  * 長工時/短天期/額外工單(以及其餘 Work Category)工作量 — counts every
  * non-deleted task by aircraft type / station / work category. */
@@ -77,12 +87,12 @@ export async function computePlanningAnalytics(supabase: DB): Promise<PlanningAn
   const tasks = await tasksRepo.findAllTasksForPlanning(supabase);
 
   return {
-    byAircraftType: breakdown(
-      tasks.map((t) => ({ value: t.aircraft_type })),
+    byAircraftType: breakdownMulti(
+      tasks.map((t) => ({ values: t.aircraft_type })),
       AIRCRAFT_TYPES
     ),
-    byStation: breakdown(
-      tasks.map((t) => ({ value: t.station })),
+    byStation: breakdownMulti(
+      tasks.map((t) => ({ values: t.station })),
       STATIONS,
       STATION_LABELS
     ),
