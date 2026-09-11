@@ -26,7 +26,7 @@ import {
   STATIONS,
   WORK_CATEGORIES,
 } from "@/lib/constants";
-import type { CrossDeptUnit, SupervisorTaskStatus, WaitingStatus } from "@/types/database.types";
+import type { AircraftType, CrossDeptUnit, Station, SupervisorTaskStatus, WaitingStatus } from "@/types/database.types";
 
 type DB = SupabaseClient<Database, "taskflow">;
 
@@ -433,8 +433,10 @@ export async function executeTool(
       const dueAfter = args.due_after as string | undefined;
       const unfinishedOnly = Boolean(args.unfinished_only);
 
-      if (aircraftType) tasks = tasks.filter((t) => t.aircraft_type === aircraftType);
-      if (station) tasks = tasks.filter((t) => t.station === station);
+      // aircraft_type/station are arrays (a task can cover more than one) —
+      // match if the requested value is any of the task's selected values.
+      if (aircraftType) tasks = tasks.filter((t) => t.aircraft_type.includes(aircraftType as AircraftType));
+      if (station) tasks = tasks.filter((t) => t.station.includes(station as Station));
       if (workCategory) tasks = tasks.filter((t) => t.work_category === workCategory);
       if (planningStatus) tasks = tasks.filter((t) => t.planning_status === planningStatus);
       // t.planning_month is stored as a full date ("YYYY-MM-01"); the AI tool's
