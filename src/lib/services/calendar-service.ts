@@ -75,6 +75,7 @@ export async function listCalendarItems(supabase: DB, query: CalendarQueryValues
     waitingService.listWaitingItems(supabase, { status: "Waiting" }),
   ]);
   const projectById = new Map(projects.map((p) => [p.id, p]));
+  const taskById = new Map(allTasks.map((t) => [t.id, t]));
   const milestones = await planningLookupsRepo.findMilestonesByProjects(supabase, projects.map((p) => p.id));
 
   for (const e of events) {
@@ -116,22 +117,39 @@ export async function listCalendarItems(supabase: DB, query: CalendarQueryValues
     });
   }
 
+  // 同一件任務同一天可能有好幾筆追蹤紀錄（例如一天內回信好幾次），逐筆各自
+  // 顯示一個行事曆項目會很冗長，而且原本用追蹤內容當標題，完全看不出來是
+  // 「哪件任務」的追蹤 —— 這裡改成按「任務＋日期」合併成一個項目，標題直接
+  // 帶出任務編號與標題，點進去就是該任務詳情頁（含完整追蹤紀錄）。
+  const followupGroups = new Map<string, { taskId: string; date: string; count: number }>();
   for (const f of followups) {
+    if (!f.followup_date) continue;
+    const key = `${f.task_id}:${f.followup_date}`;
+    const group = followupGroups.get(key);
+    if (group) {
+      group.count += 1;
+    } else {
+      followupGroups.set(key, { taskId: f.task_id, date: f.followup_date, count: 1 });
+    }
+  }
+  for (const [key, g] of followupGroups) {
+    const task = taskById.get(g.taskId);
+    const taskLabel = task ? `${task.task_number} ${task.title}` : "已刪除任務";
     items.push({
-      id: `followup:${f.id}`,
+      id: `followup:${key}`,
       source: "followup",
-      sourceId: f.id,
-      title: f.content?.slice(0, 60) || "追蹤紀錄",
-      date: f.followup_date,
+      sourceId: g.taskId,
+      title: g.count > 1 ? `追蹤更新：${taskLabel}（${g.count}則）` : `追蹤更新：${taskLabel}`,
+      date: g.date,
       startTime: null,
       endTime: null,
       eventType: "Follow-up",
       priority: null,
-      station: [],
-      aircraftType: [],
-      projectCode: null,
+      station: task?.station ?? [],
+      aircraftType: task?.aircraft_type ?? [],
+      projectCode: task?.project_id ? (projectById.get(task.project_id)?.code ?? null) : null,
       editable: false,
-      href: `/tasks/${f.task_id}`,
+      href: `/tasks/${g.taskId}`,
     });
   }
 
