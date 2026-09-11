@@ -7,6 +7,7 @@ import {
   PLANNING_STATUSES,
   STATIONS,
   TASK_PRIORITIES,
+  TASK_SOURCE_CHANNELS,
   TASK_STATUSES,
   WORK_CATEGORIES,
 } from "@/lib/constants";
@@ -31,9 +32,12 @@ export const taskFormSchema = z.object({
   followup_date: z.string().nullable().optional(),
   tags: z.array(z.string().trim().min(1)).max(20).optional(),
   // Phase 6.5: Aviation Planning Operations Center
-  aircraft_type: z.enum(AIRCRAFT_TYPES as [string, ...string[]]).nullable().optional(),
+  // Aircraft Type/Station can each cover more than one value (全機型 or a
+  // job spanning two types; A321/A339 aircraft based at more than one
+  // station) — both are multi-select, stored as arrays.
+  aircraft_type: z.array(z.enum(AIRCRAFT_TYPES as [string, ...string[]])).max(10).optional(),
   aircraft_registration: z.string().trim().nullable().optional(),
-  station: z.enum(STATIONS as [string, ...string[]]).nullable().optional(),
+  station: z.array(z.enum(STATIONS as [string, ...string[]])).max(10).optional(),
   work_category: z.enum(WORK_CATEGORIES as [string, ...string[]]).nullable().optional(),
   planning_month: z.string().nullable().optional(),
   source_department: z.enum(CROSS_DEPT_UNITS as [string, ...string[]]).nullable().optional(),
@@ -44,6 +48,10 @@ export const taskFormSchema = z.object({
   project_id: z.string().uuid().nullable().optional(),
   // System-set only (Recurring Task Engine) — not exposed in the task form.
   source_template_id: z.string().uuid().nullable().optional(),
+  // 來源：任務需求是怎麼來的（Email／會議／口頭告知／其他）＋自由輸入的細節
+  // （例如「9/10 王小姐」「週一晨會」「陳經理」）。
+  source_channel: z.enum(TASK_SOURCE_CHANNELS as [string, ...string[]]).nullable().optional(),
+  source_note: z.string().trim().max(500).nullable().optional(),
 });
 
 export type TaskFormValues = z.infer<typeof taskFormSchema>;
