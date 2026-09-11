@@ -325,8 +325,9 @@ export type CalendarItem = {
   endTime: string | null;
   eventType: import("./database.types").CalendarEventType | null;
   priority: import("./database.types").TaskPriority | null;
-  station: import("./database.types").Station | null;
-  aircraftType: import("./database.types").AircraftType | null;
+  // Arrays — a source task can cover more than one station/aircraft type.
+  station: import("./database.types").Station[];
+  aircraftType: import("./database.types").AircraftType[];
   projectCode: string | null;
   /** Only calendar_events and tasks currently support drag-to-reschedule /
    * inline edit from the calendar (see calendar-service.ts for why). */
