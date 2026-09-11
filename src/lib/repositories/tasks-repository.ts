@@ -130,7 +130,7 @@ export async function createTask(supabase: DB, values: TaskFormValues, createdBy
       tags: values.tags ?? [],
       created_by: createdBy,
       aircraft_type: (values.aircraft_type ?? []) as Database["taskflow"]["Enums"]["aircraft_type_enum"][],
-      aircraft_registration: values.aircraft_registration || null,
+      aircraft_registration: values.aircraft_registration ?? [],
       station: (values.station ?? []) as Database["taskflow"]["Enums"]["station_enum"][],
       work_category: (values.work_category || null) as Database["taskflow"]["Enums"]["work_category_enum"] | null,
       planning_month: normalizePlanningMonth(values.planning_month),
@@ -165,7 +165,7 @@ export async function updateTask(supabase: DB, id: string, values: TaskUpdateVal
   if (values.tags !== undefined) patch.tags = values.tags;
   if (values.aircraft_type !== undefined)
     patch.aircraft_type = (values.aircraft_type ?? []) as Database["taskflow"]["Enums"]["aircraft_type_enum"][];
-  if (values.aircraft_registration !== undefined) patch.aircraft_registration = values.aircraft_registration || null;
+  if (values.aircraft_registration !== undefined) patch.aircraft_registration = values.aircraft_registration ?? [];
   if (values.station !== undefined)
     patch.station = (values.station ?? []) as Database["taskflow"]["Enums"]["station_enum"][];
   if (values.work_category !== undefined)
