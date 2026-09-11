@@ -37,12 +37,16 @@ export function useUsers() {
 }
 
 /** Fleet Master — feeds the Task Form's Aircraft Type → Aircraft Registration
- * cascade. Pass an aircraft type to filter registrations to that fleet. */
-export function useFleet(aircraftType?: string) {
+ * cascade. Aircraft Type is multi-select, so pass the list of selected types
+ * to filter registrations to the union of those fleets. */
+export function useFleet(aircraftTypes?: string[]) {
+  const key = aircraftTypes?.length ? [...aircraftTypes].sort().join(",") : "all";
   return useQuery({
-    queryKey: ["planning", "fleet", aircraftType ?? "all"],
+    queryKey: ["planning", "fleet", key],
     queryFn: async () => {
-      const res = await fetch(`/api/planning/fleet${aircraftType ? `?aircraft_type=${aircraftType}` : ""}`);
+      const params = new URLSearchParams();
+      for (const t of aircraftTypes ?? []) params.append("aircraft_type", t);
+      const res = await fetch(`/api/planning/fleet${params.toString() ? `?${params.toString()}` : ""}`);
       if (!res.ok) throw new Error("無法載入機隊主檔");
       return res.json() as Promise<{ id: string; aircraft_type: string; aircraft_registration: string; station: string; status: string }[]>;
     },
