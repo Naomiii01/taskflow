@@ -36,7 +36,8 @@ export const taskFormSchema = z.object({
   // job spanning two types; A321/A339 aircraft based at more than one
   // station) — both are multi-select, stored as arrays.
   aircraft_type: z.array(z.enum(AIRCRAFT_TYPES as [string, ...string[]])).max(10).optional(),
-  aircraft_registration: z.string().trim().nullable().optional(),
+  // 機號也是多選：實務上常常不是整個機隊都排，可能只挑其中 3 架或 5 架。
+  aircraft_registration: z.array(z.string().trim().min(1)).max(50).optional(),
   station: z.array(z.enum(STATIONS as [string, ...string[]])).max(10).optional(),
   work_category: z.enum(WORK_CATEGORIES as [string, ...string[]]).nullable().optional(),
   planning_month: z.string().nullable().optional(),
