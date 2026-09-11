@@ -14,6 +14,7 @@ import type {
   Station,
   SupervisorTaskStatus,
   TaskPriority,
+  TaskSourceChannel,
   TaskStatus,
   UserRole,
   WaitingStatus,
@@ -326,6 +327,18 @@ export const RECURRENCE_FREQUENCY_LABELS: Record<RecurrenceFrequency, string> = 
 };
 
 export const CROSS_DEPT_UNITS: CrossDeptUnit[] = ["修管", "LE", "工程部", "採購", "維修部", "品保", "其他"];
+
+/** 來源：任務需求是從哪裡來的（Email／會議／口頭告知／其他），與「提出需求
+ * 單位」（source_department，哪個單位提出）是兩件事——這個記的是管道與細節
+ * （例如哪天誰的信、什麼會議、誰口頭告知），方便日後回頭查證。 */
+export const TASK_SOURCE_CHANNELS: TaskSourceChannel[] = ["Email", "Meeting", "Verbal", "Other"];
+
+export const TASK_SOURCE_CHANNEL_LABELS: Record<TaskSourceChannel, string> = {
+  Email: "Email",
+  Meeting: "會議",
+  Verbal: "口頭告知",
+  Other: "其他",
+};
 
 export const WAITING_STATUSES: WaitingStatus[] = ["Waiting", "Replied", "Cancelled"];
 
