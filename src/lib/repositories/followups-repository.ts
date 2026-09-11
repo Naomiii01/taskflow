@@ -82,7 +82,7 @@ export async function createFollowup(supabase: DB, values: FollowupFormValues, c
 export async function findFollowupsInRange(supabase: DB, start: string, end: string) {
   const { data, error } = await supabase
     .from("followups")
-    .select("id, task_id, followup_date, content")
+    .select("id, task_id, followup_date")
     .gte("followup_date", start)
     .lte("followup_date", end);
   if (error) throw error;
