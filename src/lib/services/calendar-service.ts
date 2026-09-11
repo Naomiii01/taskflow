@@ -15,7 +15,7 @@ import type {
   CalendarQueryValues,
 } from "@/lib/validations/calendar";
 import type { CalendarItem, CalendarItemSource } from "@/types/domain";
-import type { CalendarEventType, WorkCategory } from "@/types/database.types";
+import type { AircraftType, CalendarEventType, Station, WorkCategory } from "@/types/database.types";
 
 type DB = SupabaseClient<Database, "taskflow">;
 
@@ -88,8 +88,8 @@ export async function listCalendarItems(supabase: DB, query: CalendarQueryValues
       endTime: e.end_time,
       eventType: e.event_type,
       priority: e.priority,
-      station: null,
-      aircraftType: null,
+      station: [],
+      aircraftType: [],
       projectCode: null,
       editable: true,
       href: null,
@@ -127,8 +127,8 @@ export async function listCalendarItems(supabase: DB, query: CalendarQueryValues
       endTime: null,
       eventType: "Follow-up",
       priority: null,
-      station: null,
-      aircraftType: null,
+      station: [],
+      aircraftType: [],
       projectCode: null,
       editable: false,
       href: `/tasks/${f.task_id}`,
@@ -147,8 +147,8 @@ export async function listCalendarItems(supabase: DB, query: CalendarQueryValues
       endTime: null,
       eventType: "Supervisor",
       priority: s.priority,
-      station: null,
-      aircraftType: null,
+      station: [],
+      aircraftType: [],
       projectCode: null,
       editable: false,
       href: null,
@@ -167,8 +167,8 @@ export async function listCalendarItems(supabase: DB, query: CalendarQueryValues
       endTime: null,
       eventType: "Waiting",
       priority: null,
-      station: null,
-      aircraftType: null,
+      station: [],
+      aircraftType: [],
       projectCode: null,
       editable: false,
       href: w.related_task_id ? `/tasks/${w.related_task_id}` : null,
@@ -188,8 +188,8 @@ export async function listCalendarItems(supabase: DB, query: CalendarQueryValues
       endTime: null,
       eventType: "Project",
       priority: null,
-      station: null,
-      aircraftType: null,
+      station: [],
+      aircraftType: [],
       projectCode: project?.code ?? null,
       editable: false,
       href: null,
@@ -197,8 +197,10 @@ export async function listCalendarItems(supabase: DB, query: CalendarQueryValues
   }
 
   let filtered = items;
-  if (query.aircraft_type) filtered = filtered.filter((i) => i.aircraftType === query.aircraft_type);
-  if (query.station) filtered = filtered.filter((i) => i.station === query.station);
+  // aircraftType/station are now arrays (a task can cover more than one) —
+  // filtering means "this item includes the requested value", not equality.
+  if (query.aircraft_type) filtered = filtered.filter((i) => i.aircraftType.includes(query.aircraft_type as AircraftType));
+  if (query.station) filtered = filtered.filter((i) => i.station.includes(query.station as Station));
   if (query.project_code) filtered = filtered.filter((i) => i.projectCode === query.project_code);
 
   return filtered.sort((a, b) => {
