@@ -40,8 +40,8 @@ const COLOR_LABELS: Record<CalendarColorKey, string> = {
 };
 
 export function calendarColorKey(item: Pick<CalendarItem, "station" | "projectCode" | "eventType">): CalendarColorKey {
-  if (item.station === "KHH" || item.projectCode === "KHH") return "dusty-rose";
-  if (item.station === "RMQ" || item.projectCode === "RMQ") return "soft-taupe";
+  if (item.station.includes("KHH") || item.projectCode === "KHH") return "dusty-rose";
+  if (item.station.includes("RMQ") || item.projectCode === "RMQ") return "soft-taupe";
   if (item.eventType === "Supervisor") return "warm-beige";
   if (item.eventType === "Waiting" || item.eventType === "Follow-up") return "dusty-blue";
   if (item.eventType === "Daily") return "sage";
