@@ -87,6 +87,9 @@ export type CrossDeptUnit = "修管" | "LE" | "工程部" | "採購" | "維修�
 
 export type WaitingStatus = "Waiting" | "Replied" | "Cancelled";
 
+/** How a task request came in — Email/Meeting/Verbal/Other. */
+export type TaskSourceChannel = "Email" | "Meeting" | "Verbal" | "Other";
+
 export type FollowUpEntityType = "task" | "waiting_item" | "supervisor_task";
 
 export type SupervisorTaskStatus = "Open" | "In Progress" | "Completed" | "Cancelled";
@@ -175,9 +178,14 @@ export interface Database {
           created_at: string;
           updated_at: string;
           // Phase 6.5: Aviation Planning Operations Center
-          aircraft_type: AircraftType | null;
+          // aircraft_type/station store *every* selected value (Postgres array
+          // columns) — a task can span more than one aircraft type or station
+          // (e.g. "全機型" work, or an A321 job covering both RMQ and KHH), so
+          // these are never a single scalar. Always [] rather than null when
+          // nothing is selected (matches the column's `not null default '{}'`).
+          aircraft_type: AircraftType[];
           aircraft_registration: string | null;
-          station: Station | null;
+          station: Station[];
           work_category: WorkCategory | null;
           planning_month: string | null;
           source_department: CrossDeptUnit | null;
@@ -187,6 +195,12 @@ export interface Database {
           parent_task_id: string | null;
           project_id: string | null;
           source_template_id: string | null;
+          // 來源 (how the task request came in) — a lightweight companion to
+          // 提出需求單位 (source_department, which unit asked): source_channel
+          // is the channel (Email/Meeting/Verbal/Other) and source_note is a
+          // free-text detail, e.g. "9/10 王小姐" or "週一晨會".
+          source_channel: TaskSourceChannel | null;
+          source_note: string | null;
         };
         Insert: {
           id?: string;
@@ -205,9 +219,9 @@ export interface Database {
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
-          aircraft_type?: AircraftType | null;
+          aircraft_type?: AircraftType[];
           aircraft_registration?: string | null;
-          station?: Station | null;
+          station?: Station[];
           work_category?: WorkCategory | null;
           planning_month?: string | null;
           source_department?: CrossDeptUnit | null;
@@ -217,6 +231,8 @@ export interface Database {
           parent_task_id?: string | null;
           project_id?: string | null;
           source_template_id?: string | null;
+          source_channel?: TaskSourceChannel | null;
+          source_note?: string | null;
         };
         Update: Partial<Database["taskflow"]["Tables"]["tasks"]["Insert"]>;
         Relationships: [
@@ -1137,6 +1153,7 @@ export interface Database {
       recurrence_frequency_enum: RecurrenceFrequency;
       cross_dept_unit_enum: CrossDeptUnit;
       calendar_event_type: CalendarEventType;
+      task_source_channel_enum: TaskSourceChannel;
     };
     CompositeTypes: Record<string, never>;
   };
