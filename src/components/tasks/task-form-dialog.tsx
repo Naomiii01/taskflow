@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MultiSelectChips } from "@/components/ui/multi-select-chips";
 import { useFleet, useProjectOptions, useUsers } from "@/hooks/use-lookups";
 import { useCreateTask, useUpdateTask, type TaskRow } from "@/hooks/use-tasks";
 import {
@@ -33,12 +34,15 @@ import {
   STATION_LABELS,
   TASK_PRIORITIES,
   TASK_PRIORITY_LABELS,
+  TASK_SOURCE_CHANNELS,
+  TASK_SOURCE_CHANNEL_LABELS,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   WORK_CATEGORIES,
   WORK_CATEGORY_LABELS,
 } from "@/lib/constants";
 import { taskFormSchema, type TaskFormValues } from "@/lib/validations/task";
+import type { AircraftType, Station } from "@/types/database.types";
 
 const NONE = "__none__";
 
@@ -75,9 +79,9 @@ function toFormValues(task?: TaskRow | null, initialTitle?: string): TaskFormVal
     followup_date: task?.followup_date ?? "",
     tags: task?.tags ?? [],
     // Phase 6.5: Aviation Planning Operations Center
-    aircraft_type: task?.aircraft_type ?? null,
+    aircraft_type: task?.aircraft_type ?? [],
     aircraft_registration: task?.aircraft_registration ?? null,
-    station: task?.station ?? null,
+    station: task?.station ?? [],
     work_category: task?.work_category ?? null,
     planning_month: dateToMonthInput(task?.planning_month),
     source_department: task?.source_department ?? null,
@@ -85,6 +89,9 @@ function toFormValues(task?: TaskRow | null, initialTitle?: string): TaskFormVal
     planning_status: task?.planning_status ?? null,
     impact_level: task?.impact_level ?? null,
     project_id: task?.project_id ?? null,
+    // 來源：任務需求怎麼來的（Email／會議／口頭告知／其他）＋自由輸入細節。
+    source_channel: task?.source_channel ?? null,
+    source_note: task?.source_note ?? "",
   };
 }
 
@@ -123,7 +130,7 @@ export function TaskFormDialog({
     defaultValues: toFormValues(task, initialTitle),
   });
 
-  const previousAircraftType = React.useRef<string | null | undefined>(undefined);
+  const previousAircraftType = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     if (open) {
       const values = toFormValues(task, initialTitle);
@@ -131,29 +138,32 @@ export function TaskFormDialog({
       setTagsInput((values.tags ?? []).join(", "));
       // Reset doesn't count as a user-driven aircraft type change — don't
       // let the cascade effect below clear the registration it just loaded.
-      previousAircraftType.current = values.aircraft_type;
+      previousAircraftType.current = (values.aircraft_type ?? []).join(",");
     }
   }, [open, task, initialTitle, reset]);
 
   const priority = watch("priority");
   const status = watch("status");
-  const aircraftType = watch("aircraft_type");
+  const aircraftType = watch("aircraft_type") ?? [];
   const aircraftRegistration = watch("aircraft_registration");
-  const station = watch("station");
+  const station = watch("station") ?? [];
   const workCategory = watch("work_category");
   const sourceDepartment = watch("source_department");
+  const sourceChannel = watch("source_channel");
   const waitingOwner = watch("waiting_owner");
   const planningStatus = watch("planning_status");
   const projectId = watch("project_id");
 
-  // Aircraft Type 選擇後 Aircraft Registration 自動過濾（切換機型時清空原本的機號）。
-  const { data: fleet } = useFleet(aircraftType ?? undefined);
+  // Aircraft Type 選擇後 Aircraft Registration 自動過濾（機型可複選，機號清單
+  // 顯示所有選取機型的聯集；切換選取內容時清空原本的機號）。
+  const { data: fleet } = useFleet(aircraftType.length ? aircraftType : undefined);
+  const aircraftTypeKey = aircraftType.join(",");
   React.useEffect(() => {
-    if (previousAircraftType.current !== aircraftType) {
-      previousAircraftType.current = aircraftType;
+    if (previousAircraftType.current !== aircraftTypeKey) {
+      previousAircraftType.current = aircraftTypeKey;
       setValue("aircraft_registration", null);
     }
-  }, [aircraftType, setValue]);
+  }, [aircraftTypeKey, setValue]);
 
   const onSubmit = async (values: TaskFormValues) => {
     const tags = tagsInput
@@ -247,6 +257,33 @@ export function TaskFormDialog({
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>來源</Label>
+              <Select
+                value={sourceChannel ?? NONE}
+                onValueChange={(v) => setValue("source_channel", v === NONE ? null : v)}
+              >
+                <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>未指定</SelectItem>
+                  {TASK_SOURCE_CHANNELS.map((c) => (
+                    <SelectItem key={c} value={c}>{TASK_SOURCE_CHANNEL_LABELS[c]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="source_note">來源說明</Label>
+              <Input
+                id="source_note"
+                {...register("source_note")}
+                placeholder="例如：9/10 王小姐、週一晨會、陳經理"
+              />
+            </div>
+          </div>
+
           {isEdit && (
             <div className="flex flex-col gap-1.5">
               <Label>狀態</Label>
@@ -264,52 +301,40 @@ export function TaskFormDialog({
           <div className="border-t pt-4">
             <p className="mb-3 text-sm font-medium text-muted-foreground">航空維修 Planning</p>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label>Aircraft Type</Label>
-                <Select
-                  value={aircraftType ?? NONE}
-                  onValueChange={(v) => setValue("aircraft_type", v === NONE ? null : v)}
-                >
-                  <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>未指定</SelectItem>
-                    {AIRCRAFT_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Aircraft Type（可複選）</Label>
+              <MultiSelectChips<AircraftType>
+                options={AIRCRAFT_TYPES}
+                value={aircraftType as AircraftType[]}
+                onChange={(next) => setValue("aircraft_type", next)}
+              />
+            </div>
 
+            <div className="mt-4 flex flex-col gap-1.5">
+              <Label>Station（可複選）</Label>
+              <MultiSelectChips<Station>
+                options={STATIONS}
+                labels={STATION_LABELS}
+                value={station as Station[]}
+                onChange={(next) => setValue("station", next)}
+              />
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label>Aircraft Registration</Label>
                 <Select
                   value={aircraftRegistration ?? NONE}
                   onValueChange={(v) => setValue("aircraft_registration", v === NONE ? null : v)}
-                  disabled={!aircraftType}
+                  disabled={!aircraftType.length}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={aircraftType ? "選擇機號" : "請先選擇 Aircraft Type"} />
+                    <SelectValue placeholder={aircraftType.length ? "選擇機號" : "請先選擇 Aircraft Type"} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>未指定</SelectItem>
                     {fleet?.map((f) => (
                       <SelectItem key={f.id} value={f.aircraft_registration}>{f.aircraft_registration}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label>Station</Label>
-                <Select value={station ?? NONE} onValueChange={(v) => setValue("station", v === NONE ? null : v)}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>未指定</SelectItem>
-                    {STATIONS.map((s) => (
-                      <SelectItem key={s} value={s}>{STATION_LABELS[s]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
