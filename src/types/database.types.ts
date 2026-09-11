@@ -178,13 +178,14 @@ export interface Database {
           created_at: string;
           updated_at: string;
           // Phase 6.5: Aviation Planning Operations Center
-          // aircraft_type/station store *every* selected value (Postgres array
-          // columns) — a task can span more than one aircraft type or station
-          // (e.g. "全機型" work, or an A321 job covering both RMQ and KHH), so
+          // aircraft_type/station/aircraft_registration store *every* selected
+          // value (Postgres array columns) — a task can span more than one
+          // aircraft type, station, or specific tail (e.g. "全機型" work, an
+          // A321 job covering both RMQ and KHH, or only 3 of 15 A321s), so
           // these are never a single scalar. Always [] rather than null when
-          // nothing is selected (matches the column's `not null default '{}'`).
+          // nothing is selected (matches the columns' `not null default '{}'`).
           aircraft_type: AircraftType[];
-          aircraft_registration: string | null;
+          aircraft_registration: string[];
           station: Station[];
           work_category: WorkCategory | null;
           planning_month: string | null;
@@ -220,7 +221,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
           aircraft_type?: AircraftType[];
-          aircraft_registration?: string | null;
+          aircraft_registration?: string[];
           station?: Station[];
           work_category?: WorkCategory | null;
           planning_month?: string | null;
