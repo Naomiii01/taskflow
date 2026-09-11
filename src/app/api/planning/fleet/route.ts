@@ -14,9 +14,11 @@ import type { Database } from "@/types/database.types";
 export async function GET(request: NextRequest) {
   try {
     await requireCurrentUser();
-    const aircraftType = request.nextUrl.searchParams.get("aircraft_type") ?? undefined;
+    // Aircraft Type is multi-select in the task form, so this accepts
+    // repeated ?aircraft_type=A321&aircraft_type=A339 params.
+    const aircraftTypes = request.nextUrl.searchParams.getAll("aircraft_type");
     const supabase = await createClient();
-    const fleet = await planningLookupsRepo.findAllFleet(supabase, aircraftType);
+    const fleet = await planningLookupsRepo.findAllFleet(supabase, aircraftTypes.length ? aircraftTypes : undefined);
     return NextResponse.json(fleet);
   } catch (error) {
     return handleApiError(error);
