@@ -53,9 +53,13 @@ export async function findTasks(
   if (query.department_id?.length) q = q.in("department_id", query.department_id);
   if (query.owner_id?.length) q = q.in("owner_id", query.owner_id);
   if (query.mine) q = q.or(`owner_id.eq.${currentUserId},created_by.eq.${currentUserId}`);
+  // aircraft_type/station are now array columns (a task can cover more than
+  // one type/station) — "match any of the requested values" is an overlap
+  // check (&&), not an `in` membership test against a scalar column.
   if (query.aircraft_type?.length)
-    q = q.in("aircraft_type", query.aircraft_type as Database["taskflow"]["Enums"]["aircraft_type_enum"][]);
-  if (query.station?.length) q = q.in("station", query.station as Database["taskflow"]["Enums"]["station_enum"][]);
+    q = q.overlaps("aircraft_type", query.aircraft_type as Database["taskflow"]["Enums"]["aircraft_type_enum"][]);
+  if (query.station?.length)
+    q = q.overlaps("station", query.station as Database["taskflow"]["Enums"]["station_enum"][]);
   if (query.work_category?.length)
     q = q.in("work_category", query.work_category as Database["taskflow"]["Enums"]["work_category_enum"][]);
   if (query.planning_status?.length)
@@ -125,9 +129,9 @@ export async function createTask(supabase: DB, values: TaskFormValues, createdBy
       followup_date: values.followup_date || null,
       tags: values.tags ?? [],
       created_by: createdBy,
-      aircraft_type: (values.aircraft_type || null) as Database["taskflow"]["Enums"]["aircraft_type_enum"] | null,
+      aircraft_type: (values.aircraft_type ?? []) as Database["taskflow"]["Enums"]["aircraft_type_enum"][],
       aircraft_registration: values.aircraft_registration || null,
-      station: (values.station || null) as Database["taskflow"]["Enums"]["station_enum"] | null,
+      station: (values.station ?? []) as Database["taskflow"]["Enums"]["station_enum"][],
       work_category: (values.work_category || null) as Database["taskflow"]["Enums"]["work_category_enum"] | null,
       planning_month: normalizePlanningMonth(values.planning_month),
       source_department: (values.source_department || null) as Database["taskflow"]["Enums"]["cross_dept_unit_enum"] | null,
@@ -137,6 +141,8 @@ export async function createTask(supabase: DB, values: TaskFormValues, createdBy
       parent_task_id: values.parent_task_id || null,
       project_id: values.project_id || null,
       source_template_id: values.source_template_id || null,
+      source_channel: (values.source_channel || null) as Database["taskflow"]["Enums"]["task_source_channel_enum"] | null,
+      source_note: values.source_note || null,
     })
     .select(TASK_SELECT)
     .single();
@@ -158,10 +164,10 @@ export async function updateTask(supabase: DB, id: string, values: TaskUpdateVal
   if (values.followup_date !== undefined) patch.followup_date = values.followup_date || null;
   if (values.tags !== undefined) patch.tags = values.tags;
   if (values.aircraft_type !== undefined)
-    patch.aircraft_type = (values.aircraft_type || null) as Database["taskflow"]["Enums"]["aircraft_type_enum"] | null;
+    patch.aircraft_type = (values.aircraft_type ?? []) as Database["taskflow"]["Enums"]["aircraft_type_enum"][];
   if (values.aircraft_registration !== undefined) patch.aircraft_registration = values.aircraft_registration || null;
   if (values.station !== undefined)
-    patch.station = (values.station || null) as Database["taskflow"]["Enums"]["station_enum"] | null;
+    patch.station = (values.station ?? []) as Database["taskflow"]["Enums"]["station_enum"][];
   if (values.work_category !== undefined)
     patch.work_category = (values.work_category || null) as Database["taskflow"]["Enums"]["work_category_enum"] | null;
   if (values.planning_month !== undefined) patch.planning_month = normalizePlanningMonth(values.planning_month);
@@ -175,6 +181,9 @@ export async function updateTask(supabase: DB, id: string, values: TaskUpdateVal
     patch.impact_level = (values.impact_level || null) as Database["taskflow"]["Enums"]["impact_level_enum"] | null;
   if (values.parent_task_id !== undefined) patch.parent_task_id = values.parent_task_id || null;
   if (values.project_id !== undefined) patch.project_id = values.project_id || null;
+  if (values.source_channel !== undefined)
+    patch.source_channel = (values.source_channel || null) as Database["taskflow"]["Enums"]["task_source_channel_enum"] | null;
+  if (values.source_note !== undefined) patch.source_note = values.source_note || null;
 
   const { data, error } = await supabase.from("tasks").update(patch).eq("id", id).select(TASK_SELECT).single();
   if (error) throw error;
@@ -249,14 +258,17 @@ export async function findAllTasksForAnalysis(supabase: DB): Promise<AnalysisTas
 export type PlanningTaskSnapshot = EngineTaskSnapshot & {
   project_id: string | null;
   planning_status: Database["taskflow"]["Enums"]["planning_status_enum"] | null;
-  aircraft_type: Database["taskflow"]["Enums"]["aircraft_type_enum"] | null;
-  station: Database["taskflow"]["Enums"]["station_enum"] | null;
+  // Arrays — a task can span more than one aircraft type/station.
+  aircraft_type: Database["taskflow"]["Enums"]["aircraft_type_enum"][];
+  station: Database["taskflow"]["Enums"]["station_enum"][];
   work_category: Database["taskflow"]["Enums"]["work_category_enum"] | null;
   waiting_owner: Database["taskflow"]["Enums"]["cross_dept_unit_enum"] | null;
   source_department: Database["taskflow"]["Enums"]["cross_dept_unit_enum"] | null;
   planning_month: string | null;
   parent_task_id: string | null;
   source_template_id: string | null;
+  source_channel: Database["taskflow"]["Enums"]["task_source_channel_enum"] | null;
+  source_note: string | null;
 };
 
 /** All non-deleted tasks (every status) with the Phase 6.5 planning columns —
@@ -264,7 +276,7 @@ export type PlanningTaskSnapshot = EngineTaskSnapshot & {
  * Briefing, all of which need to slice tasks by project/aircraft/station/
  * work category/planning status in different ways. */
 const PLANNING_TASK_SNAPSHOT_SELECT =
-  "id, task_number, title, status, priority, due_date, owner_id, department_id, created_at, updated_at, project_id, planning_status, aircraft_type, station, work_category, waiting_owner, source_department, planning_month, parent_task_id, source_template_id";
+  "id, task_number, title, status, priority, due_date, owner_id, department_id, created_at, updated_at, project_id, planning_status, aircraft_type, station, work_category, waiting_owner, source_department, planning_month, parent_task_id, source_template_id, source_channel, source_note";
 
 export async function findAllTasksForPlanning(supabase: DB): Promise<PlanningTaskSnapshot[]> {
   const { data, error } = await supabase.from("tasks").select(PLANNING_TASK_SNAPSHOT_SELECT).is("deleted_at", null);
