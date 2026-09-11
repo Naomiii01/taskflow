@@ -83,11 +83,11 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
                 #{tag}
               </span>
             ))}
-            {task.aircraft_type?.map((t, i) => (
-              <Badge key={t} variant="outline">
-                {t}
-                {i === 0 && task.aircraft_registration ? ` ${task.aircraft_registration}` : ""}
-              </Badge>
+            {task.aircraft_type?.map((t) => (
+              <Badge key={t} variant="outline">{t}</Badge>
+            ))}
+            {task.aircraft_registration?.map((r) => (
+              <Badge key={r} variant="outline">{r}</Badge>
             ))}
             {task.station?.map((s) => (
               <Badge key={s} variant="outline">{STATION_LABELS[s]}</Badge>
