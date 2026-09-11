@@ -20,12 +20,15 @@ export function PlanningTimelineView({ anchor, items, onItemClick }: { anchor: D
   const byAircraftAndDate = new Map<string, Map<string, CalendarItem[]>>();
   for (const type of AIRCRAFT_TYPES) byAircraftAndDate.set(type, new Map());
   for (const item of items) {
-    if (!item.aircraftType) continue;
-    const byDate = byAircraftAndDate.get(item.aircraftType);
-    if (!byDate) continue;
-    const list = byDate.get(item.date) ?? [];
-    list.push(item);
-    byDate.set(item.date, list);
+    // A task covering more than one aircraft type (全機型 or a job spanning
+    // two types) shows up in every one of its lanes, not just the first.
+    for (const type of item.aircraftType) {
+      const byDate = byAircraftAndDate.get(type);
+      if (!byDate) continue;
+      const list = byDate.get(item.date) ?? [];
+      list.push(item);
+      byDate.set(item.date, list);
+    }
   }
 
   return (
@@ -76,15 +79,15 @@ export function PlanningTimelineView({ anchor, items, onItemClick }: { anchor: D
         <p className="text-xs font-medium text-muted-foreground">本月清單</p>
         <ol className="flex flex-col gap-1">
           {items
-            .filter((i) => i.aircraftType)
+            .filter((i) => i.aircraftType.length > 0)
             .map((item) => (
               <li key={item.id} className="flex items-center gap-2 text-xs">
                 <span className="w-16 shrink-0 text-muted-foreground">{item.date}</span>
-                <span className="w-12 shrink-0 font-medium">{item.aircraftType}</span>
+                <span className="w-20 shrink-0 font-medium">{item.aircraftType.join("／")}</span>
                 <CalendarEventPill item={item} onClick={onItemClick} />
               </li>
             ))}
-          {items.every((i) => !i.aircraftType) && (
+          {items.every((i) => i.aircraftType.length === 0) && (
             <p className="text-xs text-muted-foreground">本月沒有指定機型的工作。</p>
           )}
         </ol>
