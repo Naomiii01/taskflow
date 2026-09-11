@@ -27,10 +27,11 @@ import {
   PLANNING_STATUS_BADGE,
   PLANNING_STATUS_LABELS,
   STATION_LABELS,
+  TASK_SOURCE_CHANNEL_LABELS,
   WORK_CATEGORY_LABELS,
 } from "@/lib/constants";
 import type { FollowupWithAuthor, TaskLogWithUser } from "@/types/domain";
-import type { ImpactLevel, PlanningStatus, Station, WorkCategory } from "@/types/database.types";
+import type { ImpactLevel, PlanningStatus, TaskSourceChannel, WorkCategory } from "@/types/database.types";
 
 export function TaskDetailClient({ taskId }: { taskId: string }) {
   const router = useRouter();
@@ -82,9 +83,22 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
                 #{tag}
               </span>
             ))}
-            {task.aircraft_type && <Badge variant="outline">{task.aircraft_type}{task.aircraft_registration ? ` ${task.aircraft_registration}` : ""}</Badge>}
-            {task.station && <Badge variant="outline">{STATION_LABELS[task.station as Station]}</Badge>}
+            {task.aircraft_type?.map((t, i) => (
+              <Badge key={t} variant="outline">
+                {t}
+                {i === 0 && task.aircraft_registration ? ` ${task.aircraft_registration}` : ""}
+              </Badge>
+            ))}
+            {task.station?.map((s) => (
+              <Badge key={s} variant="outline">{STATION_LABELS[s]}</Badge>
+            ))}
             {task.work_category && <Badge variant="outline">{WORK_CATEGORY_LABELS[task.work_category as WorkCategory]}</Badge>}
+            {task.source_channel && (
+              <Badge variant="outline">
+                來源：{TASK_SOURCE_CHANNEL_LABELS[task.source_channel as TaskSourceChannel]}
+                {task.source_note ? ` ${task.source_note}` : ""}
+              </Badge>
+            )}
             {task.planning_status && (
               <Badge variant={PLANNING_STATUS_BADGE[task.planning_status as PlanningStatus]}>
                 {PLANNING_STATUS_LABELS[task.planning_status as PlanningStatus]}
