@@ -80,7 +80,7 @@ function toFormValues(task?: TaskRow | null, initialTitle?: string): TaskFormVal
     tags: task?.tags ?? [],
     // Phase 6.5: Aviation Planning Operations Center
     aircraft_type: task?.aircraft_type ?? [],
-    aircraft_registration: task?.aircraft_registration ?? null,
+    aircraft_registration: task?.aircraft_registration ?? [],
     station: task?.station ?? [],
     work_category: task?.work_category ?? null,
     planning_month: dateToMonthInput(task?.planning_month),
@@ -145,7 +145,7 @@ export function TaskFormDialog({
   const priority = watch("priority");
   const status = watch("status");
   const aircraftType = watch("aircraft_type") ?? [];
-  const aircraftRegistration = watch("aircraft_registration");
+  const aircraftRegistration = watch("aircraft_registration") ?? [];
   const station = watch("station") ?? [];
   const workCategory = watch("work_category");
   const sourceDepartment = watch("source_department");
@@ -161,7 +161,7 @@ export function TaskFormDialog({
   React.useEffect(() => {
     if (previousAircraftType.current !== aircraftTypeKey) {
       previousAircraftType.current = aircraftTypeKey;
-      setValue("aircraft_registration", null);
+      setValue("aircraft_registration", []);
     }
   }, [aircraftTypeKey, setValue]);
 
@@ -320,41 +320,37 @@ export function TaskFormDialog({
               />
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label>Aircraft Registration</Label>
-                <Select
-                  value={aircraftRegistration ?? NONE}
-                  onValueChange={(v) => setValue("aircraft_registration", v === NONE ? null : v)}
-                  disabled={!aircraftType.length}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={aircraftType.length ? "選擇機號" : "請先選擇 Aircraft Type"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>未指定</SelectItem>
-                    {fleet?.map((f) => (
-                      <SelectItem key={f.id} value={f.aircraft_registration}>{f.aircraft_registration}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="mt-4 flex flex-col gap-1.5">
+              <Label>Aircraft Registration（可複選）</Label>
+              {aircraftType.length ? (
+                fleet?.length ? (
+                  <MultiSelectChips<string>
+                    options={fleet.map((f) => f.aircraft_registration)}
+                    value={aircraftRegistration}
+                    onChange={(next) => setValue("aircraft_registration", next)}
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">載入機號清單中…</p>
+                )
+              ) : (
+                <p className="text-xs text-muted-foreground">請先選擇 Aircraft Type 才能選機號</p>
+              )}
+            </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label>Work Category</Label>
-                <Select
-                  value={workCategory ?? NONE}
-                  onValueChange={(v) => setValue("work_category", v === NONE ? null : v)}
-                >
-                  <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>未指定</SelectItem>
-                    {WORK_CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>{WORK_CATEGORY_LABELS[c]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="mt-4 flex flex-col gap-1.5">
+              <Label>Work Category</Label>
+              <Select
+                value={workCategory ?? NONE}
+                onValueChange={(v) => setValue("work_category", v === NONE ? null : v)}
+              >
+                <SelectTrigger className="w-full"><SelectValue placeholder="未指定" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>未指定</SelectItem>
+                  {WORK_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>{WORK_CATEGORY_LABELS[c]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-4">
