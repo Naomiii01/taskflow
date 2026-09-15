@@ -21,6 +21,7 @@ import type {
   UserRole,
   WaitingStatus,
   WorkCategory,
+  WorkShift,
 } from "@/types/database.types";
 
 export const TASK_STATUSES: TaskStatus[] = [
@@ -270,6 +271,9 @@ export const MAJOR_WORK_PLANNING_STATUS_LABELS: Record<MajorWorkPlanningStatus, 
   Completed: "已完成",
   Cancelled: "取消",
 };
+
+/** 計畫大工的班別——只在有填「計畫大工項目」時才有意義，純過夜停留不用填。 */
+export const WORK_SHIFTS: WorkShift[] = ["早班", "中班", "大夜班"];
 
 export const WORK_CATEGORIES: WorkCategory[] = [
   "Daily Check",
