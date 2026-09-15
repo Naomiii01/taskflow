@@ -33,6 +33,7 @@ import {
   MAJOR_WORK_PLANNING_STATUSES,
   STATIONS,
   STATION_LABELS,
+  WORK_SHIFTS,
 } from "@/lib/constants";
 
 export type AircraftOption = { registration: string; aircraftType: string; homeStation: string };
@@ -68,6 +69,7 @@ function emptyValues(defaultAircraft?: string, defaultStation?: string, defaultD
     required_equipment: "",
     required_authorization: "",
     planning_status: null,
+    shift: null,
   };
 }
 
@@ -85,6 +87,7 @@ function valuesFromWindow(aircraftRegistration: string, window: PlanningBoardWin
     required_equipment: window.requiredEquipment ?? "",
     required_authorization: window.requiredAuthorization ?? "",
     planning_status: (window.planningStatus as GroundWindowValues["planning_status"]) ?? null,
+    shift: (window.shift as GroundWindowValues["shift"]) ?? null,
   };
 }
 
@@ -156,6 +159,7 @@ export function AddGroundWindowDialog({
   const departureAt = watch("departure_at");
   const currentStatus = watch("current_status");
   const planningStatus = watch("planning_status");
+  const shift = watch("shift");
 
   const toggleTask = (taskId: string, checked: boolean) => {
     setSelectedTaskIds((prev) => (checked ? [...prev, taskId] : prev.filter((id) => id !== taskId)));
@@ -289,6 +293,21 @@ export function AddGroundWindowDialog({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
+                  <Label>班別</Label>
+                  <Select
+                    value={shift ?? NONE_VALUE}
+                    onValueChange={(v) => setValue("shift", v === NONE_VALUE ? null : (v as GroundWindowValues["shift"]))}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue placeholder="未設定" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE_VALUE}>未設定</SelectItem>
+                      {WORK_SHIFTS.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="estimated_mh">預估工時（MH）</Label>
                   <Input
                     id="estimated_mh"
@@ -300,21 +319,22 @@ export function AddGroundWindowDialog({
                   />
                   {errors.estimated_mh && <p className="text-xs text-destructive">{errors.estimated_mh.message}</p>}
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="required_skill">所需技術能力</Label>
-                  <Input id="required_skill" {...register("required_skill")} placeholder="選填" />
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="required_skill">所需技術能力</Label>
+                  <Input id="required_skill" {...register("required_skill")} placeholder="選填" />
+                </div>
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="required_equipment">所需設備</Label>
                   <Input id="required_equipment" {...register("required_equipment")} placeholder="選填" />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="required_authorization">所需授權資格</Label>
-                  <Input id="required_authorization" {...register("required_authorization")} placeholder="選填" />
-                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="required_authorization">所需授權資格</Label>
+                <Input id="required_authorization" {...register("required_authorization")} placeholder="選填" />
               </div>
 
               {isEditing && (
