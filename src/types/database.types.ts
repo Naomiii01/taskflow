@@ -62,6 +62,16 @@ export type Station = "TPE" | "TSA" | "RMQ" | "KHH";
  * 'import' = brought in from an uploaded schedule file. */
 export type GroundWindowSource = "manual" | "import";
 
+/** Aircraft Planning Board Lite "Current Status" — the aircraft's operational
+ * state during a given ground-time window. */
+export type AircraftCurrentStatus = "Available" | "In Service" | "In Maintenance" | "AOG";
+
+/** Aircraft Planning Board Lite "Planning Status" — status of the major work
+ * (if any) planned during a ground-time window. Deliberately a separate enum
+ * from the tasks table's own PlanningStatus (different concept, different
+ * values) even though the names are similar. */
+export type MajorWorkPlanningStatus = "Draft" | "Confirmed" | "In Progress" | "Completed" | "Cancelled";
+
 export type WorkCategory =
   | "Daily Check"
   | "Short Term"
@@ -206,6 +216,10 @@ export interface Database {
           // free-text detail, e.g. "9/10 王小姐" or "週一晨會".
           source_channel: TaskSourceChannel | null;
           source_note: string | null;
+          // Aircraft Planning Board Lite: which ground-time window (if any)
+          // this task has been scheduled into. Null = still unscheduled —
+          // this is what "待安排工單數量" on the board counts.
+          linked_ground_window_id: string | null;
         };
         Insert: {
           id?: string;
@@ -238,6 +252,7 @@ export interface Database {
           source_template_id?: string | null;
           source_channel?: TaskSourceChannel | null;
           source_note?: string | null;
+          linked_ground_window_id?: string | null;
         };
         Update: Partial<Database["taskflow"]["Tables"]["tasks"]["Insert"]>;
         Relationships: [
@@ -862,6 +877,15 @@ export interface Database {
           departure_at: string;
           notes: string | null;
           source: GroundWindowSource;
+          // Planning Information — what major work (if any) is planned during
+          // this ground stay. All nullable: most stays have none of this set.
+          current_status: AircraftCurrentStatus | null;
+          major_work_planned: string | null;
+          estimated_mh: number | null;
+          required_skill: string | null;
+          required_equipment: string | null;
+          required_authorization: string | null;
+          planning_status: MajorWorkPlanningStatus | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -874,11 +898,36 @@ export interface Database {
           departure_at: string;
           notes?: string | null;
           source?: GroundWindowSource;
+          current_status?: AircraftCurrentStatus | null;
+          major_work_planned?: string | null;
+          estimated_mh?: number | null;
+          required_skill?: string | null;
+          required_equipment?: string | null;
+          required_authorization?: string | null;
+          planning_status?: MajorWorkPlanningStatus | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Insert"]>;
+        Relationships: [];
+      };
+      planning_board_settings: {
+        Row: {
+          id: string;
+          yellow_threshold: number;
+          red_threshold: number;
+          updated_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          yellow_threshold?: number;
+          red_threshold?: number;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Update: Partial<Database["taskflow"]["Tables"]["planning_board_settings"]["Insert"]>;
         Relationships: [];
       };
       projects: {
