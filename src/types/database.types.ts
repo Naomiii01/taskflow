@@ -58,6 +58,10 @@ export type AircraftType = "A321" | "A339" | "A351" | "A359";
 
 export type Station = "TPE" | "TSA" | "RMQ" | "KHH";
 
+/** Phase 6.6 Aircraft Planning Board Lite: 'manual' = typed in one at a time,
+ * 'import' = brought in from an uploaded schedule file. */
+export type GroundWindowSource = "manual" | "import";
+
 export type WorkCategory =
   | "Daily Check"
   | "Short Term"
@@ -846,6 +850,35 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database["taskflow"]["Tables"]["fleet_master"]["Insert"]>;
+        Relationships: [];
+      };
+      // --- Phase 6.6: Aircraft Planning Board Lite ---------------------------
+      aircraft_ground_windows: {
+        Row: {
+          id: string;
+          aircraft_registration: string;
+          station: Station;
+          arrival_at: string;
+          departure_at: string;
+          notes: string | null;
+          source: GroundWindowSource;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          aircraft_registration: string;
+          station: Station;
+          arrival_at: string;
+          departure_at: string;
+          notes?: string | null;
+          source?: GroundWindowSource;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Insert"]>;
         Relationships: [];
       };
       projects: {
