@@ -97,7 +97,7 @@ export function CalendarClient({ showHeader = true }: { showHeader?: boolean }) 
       {showHeader && (
         <div>
           <h1 className="text-xl font-semibold">行事曆</h1>
-          <p className="text-sm text-muted-foreground">Calendar Planning Center — Planning 排程中心。</p>
+          <p className="text-sm text-muted-foreground">輔助檢視——依日期看到期日、追蹤回覆與交辦事項。主要規劃請到 Aircraft Planning Board。</p>
         </div>
       )}
 
