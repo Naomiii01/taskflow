@@ -72,6 +72,11 @@ export type AircraftCurrentStatus = "Available" | "In Service" | "In Maintenance
  * values) even though the names are similar. */
 export type MajorWorkPlanningStatus = "Draft" | "Confirmed" | "In Progress" | "Completed" | "Cancelled";
 
+/** Aircraft Planning Board Lite — which shift a planned major-work item falls
+ * in. Only meaningful when major_work_planned is set; a plain overnight stay
+ * with no work planned leaves this null. */
+export type WorkShift = "早班" | "中班" | "大夜班";
+
 export type WorkCategory =
   | "Daily Check"
   | "Short Term"
@@ -886,6 +891,7 @@ export interface Database {
           required_equipment: string | null;
           required_authorization: string | null;
           planning_status: MajorWorkPlanningStatus | null;
+          shift: WorkShift | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -905,6 +911,7 @@ export interface Database {
           required_equipment?: string | null;
           required_authorization?: string | null;
           planning_status?: MajorWorkPlanningStatus | null;
+          shift?: WorkShift | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
