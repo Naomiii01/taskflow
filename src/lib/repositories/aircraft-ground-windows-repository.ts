@@ -7,7 +7,7 @@ import type { Database } from "@/types/database.types";
 type DB = SupabaseClient<Database, "taskflow">;
 
 const GROUND_WINDOW_SELECT =
-  "id, aircraft_registration, station, arrival_at, departure_at, notes, source, current_status, major_work_planned, estimated_mh, required_skill, required_equipment, required_authorization, planning_status, created_by, created_at, updated_at";
+  "id, aircraft_registration, station, arrival_at, departure_at, notes, source, current_status, major_work_planned, estimated_mh, required_skill, required_equipment, required_authorization, planning_status, shift, created_by, created_at, updated_at";
 
 /**
  * Windows that overlap [startIso, endExclusiveIso) — i.e. any part of the
@@ -50,13 +50,23 @@ export async function createWindow(
 }
 
 /** Bulk insert for the schedule-file import path. Supabase caps a single
- * insert's payload, so the service chunks large imports before calling this. */
+ * insert's payload, so the service chunks large imports before calling this.
+ * Upserts with `ignoreDuplicates` (→ ON CONFLICT DO NOTHING on the
+ * aircraft_registration/station/arrival_at/departure_at unique constraint)
+ * so re-importing an overlapping export — the normal case once daily
+ * imports start — never creates duplicate rows and, just as importantly,
+ * never overwrites Planning Information she's already filled in by hand on
+ * a row that happens to match. The returned rows are only the genuinely new
+ * ones; anything skipped as a duplicate simply isn't in `data`. */
 export async function createWindows(
   supabase: DB,
   values: Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Insert"][]
 ) {
   if (!values.length) return [];
-  const { data, error } = await supabase.from("aircraft_ground_windows").insert(values).select(GROUND_WINDOW_SELECT);
+  const { data, error } = await supabase
+    .from("aircraft_ground_windows")
+    .upsert(values, { onConflict: "aircraft_registration,station,arrival_at,departure_at", ignoreDuplicates: true })
+    .select(GROUND_WINDOW_SELECT);
   if (error) throw error;
   return data ?? [];
 }
