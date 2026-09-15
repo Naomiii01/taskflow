@@ -7,7 +7,7 @@ import type { Database } from "@/types/database.types";
 type DB = SupabaseClient<Database, "taskflow">;
 
 const GROUND_WINDOW_SELECT =
-  "id, aircraft_registration, station, arrival_at, departure_at, notes, source, created_by, created_at, updated_at";
+  "id, aircraft_registration, station, arrival_at, departure_at, notes, source, current_status, major_work_planned, estimated_mh, required_skill, required_equipment, required_authorization, planning_status, created_by, created_at, updated_at";
 
 /**
  * Windows that overlap [startIso, endExclusiveIso) — i.e. any part of the
