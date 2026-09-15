@@ -1,10 +1,12 @@
 import type {
+  AircraftCurrentStatus,
   AircraftType,
   AttachmentCategory,
   CalendarEventType,
   CrossDeptUnit,
   FollowUpEntityType,
   ImpactLevel,
+  MajorWorkPlanningStatus,
   NotificationType,
   OcrEntityType,
   PlanningStatus,
@@ -240,6 +242,33 @@ export const STATION_LABELS: Record<Station, string> = {
   TSA: "TSA 松山",
   RMQ: "RMQ 台中",
   KHH: "KHH 高雄",
+};
+
+// --- Aircraft Planning Board Lite (Phase 6.6) ------------------------------------
+
+export const AIRCRAFT_CURRENT_STATUSES: AircraftCurrentStatus[] = ["Available", "In Service", "In Maintenance", "AOG"];
+
+export const AIRCRAFT_CURRENT_STATUS_LABELS: Record<AircraftCurrentStatus, string> = {
+  Available: "可用待修",
+  "In Service": "執勤中",
+  "In Maintenance": "停場檢修",
+  AOG: "故障停飛",
+};
+
+export const MAJOR_WORK_PLANNING_STATUSES: MajorWorkPlanningStatus[] = [
+  "Draft",
+  "Confirmed",
+  "In Progress",
+  "Completed",
+  "Cancelled",
+];
+
+export const MAJOR_WORK_PLANNING_STATUS_LABELS: Record<MajorWorkPlanningStatus, string> = {
+  Draft: "初步排定",
+  Confirmed: "已確認",
+  "In Progress": "執行中",
+  Completed: "已完成",
+  Cancelled: "取消",
 };
 
 export const WORK_CATEGORIES: WorkCategory[] = [
