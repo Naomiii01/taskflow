@@ -6,6 +6,7 @@ import {
   Settings,
   Sparkles,
   PlaneTakeoff,
+  LayoutGrid,
 } from "lucide-react";
 
 export type NavItem = {
@@ -22,7 +23,12 @@ export type NavItem = {
 // 附件與 OCR、部門管理：目前僅單人使用，暫時從側邊選單移除以精簡導覽；頁面與
 // 功能本身都還在（/attachments、/departments 仍可直接訪問，任務詳情頁的附件
 // 上傳也不受影響），未來要多人協作時可以再加回選單。
+// Phase 6.6 pivot：系統原本過度以 Task/Calendar 為中心，但航空維修規劃的核心
+// 其實是航機可用窗口/停留時間/過夜機會，所以 Aircraft Planning Board 現在排
+// 第一個、也是登入後的預設頁面；Planning Operations Center（Task/Waiting/
+// Supervisor/Project）整個保留，退居選單第二項。
 export const NAV_ITEMS: NavItem[] = [
+  { title: "Aircraft Planning Board", href: "/aircraft-board", icon: LayoutGrid },
   { title: "Planning Operations Center", href: "/planning", icon: PlaneTakeoff },
   { title: "行事曆", href: "/calendar", icon: CalendarDays },
   { title: "搜尋中心", href: "/search", icon: Search },
