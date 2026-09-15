@@ -71,6 +71,42 @@ export async function createWindows(
   return data ?? [];
 }
 
+/** Clears out stale imported ground windows before a re-import writes fresh
+ * ones — schedules change constantly, so re-importing the same date range
+ * (a daily habit once this is the normal workflow) needs to REPLACE the old
+ * computed windows, not just pile new ones on top of them. Only ever touches
+ * rows that are safe to discard: `source = 'import'` (never a row she built
+ * by hand) AND every Planning Information field is still empty (never a row
+ * she's since filled in — that one stays untouched even if the schedule
+ * moved, since her plan matters more than the exact stale timestamps).
+ * `rangeStartIso`/`rangeEndExclusiveIso` should bracket the new import's
+ * earliest arrival to latest departure for this aircraft — old rows whose
+ * arrival falls in that window are what the fresh import is meant to
+ * supersede. */
+export async function deleteStaleImportWindows(
+  supabase: DB,
+  aircraftRegistration: string,
+  rangeStartIso: string,
+  rangeEndExclusiveIso: string
+) {
+  const { error } = await supabase
+    .from("aircraft_ground_windows")
+    .delete()
+    .eq("aircraft_registration", aircraftRegistration)
+    .eq("source", "import")
+    .gte("arrival_at", rangeStartIso)
+    .lt("arrival_at", rangeEndExclusiveIso)
+    .is("major_work_planned", null)
+    .is("shift", null)
+    .is("current_status", null)
+    .is("estimated_mh", null)
+    .is("required_skill", null)
+    .is("required_equipment", null)
+    .is("required_authorization", null)
+    .is("planning_status", null);
+  if (error) throw error;
+}
+
 export async function updateWindow(
   supabase: DB,
   id: string,
