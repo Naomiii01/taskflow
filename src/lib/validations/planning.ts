@@ -112,3 +112,49 @@ export const recurringTemplateSchema = z.object({
   is_active: z.boolean().optional(),
 });
 export type RecurringTemplateValues = z.infer<typeof recurringTemplateSchema>;
+
+// --- Aircraft Planning Board Lite (Phase 6.6) ------------------------------------
+
+/** 一段「機號在某站的地面時間」——進站到下一次離站。Aircraft Planning Board
+ * 的三個 Lite 維度（Availability / Ground Time / Overnight Opportunity）都是
+ * 從這筆資料在畫面上即時算出來的，資料庫本身不存已經算好的欄位。 */
+export const groundWindowSchema = z
+  .object({
+    aircraft_registration: z.string().trim().min(1, "請選擇機號"),
+    station: z.enum(STATIONS as [string, ...string[]]),
+    arrival_at: z.string().min(1, "請輸入進站時間"),
+    departure_at: z.string().min(1, "請輸入離站時間"),
+    notes: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((v) => new Date(v.departure_at).getTime() > new Date(v.arrival_at).getTime(), {
+    message: "離站時間必須晚於進站時間",
+    path: ["departure_at"],
+  });
+export type GroundWindowValues = z.infer<typeof groundWindowSchema>;
+
+export const groundWindowUpdateSchema = z.object({
+  aircraft_registration: z.string().trim().min(1).optional(),
+  station: z.enum(STATIONS as [string, ...string[]]).optional(),
+  arrival_at: z.string().min(1).optional(),
+  departure_at: z.string().min(1).optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+export type GroundWindowUpdateValues = z.infer<typeof groundWindowUpdateSchema>;
+
+export const groundWindowQuerySchema = z.object({
+  start: z.string().min(1),
+  end: z.string().min(1),
+});
+export type GroundWindowQuery = z.infer<typeof groundWindowQuerySchema>;
+
+/** 一列匯入班表資料——欄位跟 groundWindowSchema 幾乎一樣，只是 import 這條路
+ * 徑允許 station 留空（有些機務排程檔案不一定每列都有站別），交給
+ * aircraft-planning-service.ts 決定要不要用機號的常駐站別補上。 */
+export const groundWindowImportRowSchema = z.object({
+  aircraft_registration: z.string().trim().min(1),
+  station: z.enum(STATIONS as [string, ...string[]]).optional(),
+  arrival_at: z.string().min(1),
+  departure_at: z.string().min(1),
+  notes: z.string().trim().max(500).nullable().optional(),
+});
+export type GroundWindowImportRow = z.infer<typeof groundWindowImportRowSchema>;
