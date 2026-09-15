@@ -810,6 +810,15 @@ function deriveOpsExportGroundWindows(
  * so one bad row doesn't sink the whole file — `skipped` reports why each
  * one didn't make it in, 1-indexed to match what she'd see counting rows in
  * Excel (row 1 = header, so the first data row is reported as row 2).
+ *
+ * Before inserting, clears out each affected aircraft's stale *imported*
+ * ground windows that fall inside this file's date range (see
+ * deleteStaleImportWindows) — schedules change often, so re-importing the
+ * same days needs to REPLACE the old computed windows with the corrected
+ * ones, not pile new ones on top. A window she's since added Planning
+ * Information to is left alone even if it's now stale, since her plan
+ * matters more than the exact timestamps; a window she built by hand
+ * (source = 'manual') is never touched by this at all.
  */
 export async function importGroundWindows(supabase: DB, rows: ImportedRow[], currentUserId: string): Promise<ImportResult> {
   const fleet = await planningLookupsRepo.findAllFleet(supabase);
@@ -856,6 +865,26 @@ export async function importGroundWindows(supabase: DB, rows: ImportedRow[], cur
       created_by: currentUserId,
     });
   });
+
+  // Before inserting, clear out each affected aircraft's stale *imported*
+  // ground windows that fall inside this file's date range (see
+  // deleteStaleImportWindows) — otherwise a daily re-import would just pile
+  // corrected rows on top of the old ones instead of replacing them.
+  const rangeByAircraft = new Map<string, { start: string; end: string }>();
+  for (const row of toInsert) {
+    const existing = rangeByAircraft.get(row.aircraft_registration);
+    if (!existing) {
+      rangeByAircraft.set(row.aircraft_registration, { start: row.arrival_at, end: row.departure_at });
+    } else {
+      if (row.arrival_at < existing.start) existing.start = row.arrival_at;
+      if (row.departure_at > existing.end) existing.end = row.departure_at;
+    }
+  }
+  await Promise.all(
+    Array.from(rangeByAircraft.entries()).map(([aircraftRegistration, range]) =>
+      groundWindowsRepo.deleteStaleImportWindows(supabase, aircraftRegistration, range.start, range.end)
+    )
+  );
 
   // Chunk to stay well under typical request/payload limits on a big file.
   const CHUNK_SIZE = 500;
