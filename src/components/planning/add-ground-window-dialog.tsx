@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -16,16 +17,27 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   useCreateGroundWindow,
   useDeleteGroundWindow,
+  useLinkableTasks,
   useUpdateGroundWindow,
   type PlanningBoardWindow,
 } from "@/hooks/use-aircraft-planning";
 import { groundWindowSchema, type GroundWindowValues } from "@/lib/validations/planning";
-import { STATIONS, STATION_LABELS } from "@/lib/constants";
+import {
+  AIRCRAFT_CURRENT_STATUS_LABELS,
+  AIRCRAFT_CURRENT_STATUSES,
+  MAJOR_WORK_PLANNING_STATUS_LABELS,
+  MAJOR_WORK_PLANNING_STATUSES,
+  STATIONS,
+  STATION_LABELS,
+} from "@/lib/constants";
 
 export type AircraftOption = { registration: string; aircraftType: string; homeStation: string };
+
+const NONE_VALUE = "__none__";
 
 /** Converts our storage format (a plain ISO string that is never timezone-
  * converted — see aircraft-planning-service.ts) to/from the value an
@@ -49,6 +61,13 @@ function emptyValues(defaultAircraft?: string, defaultStation?: string, defaultD
     arrival_at: arrival ? localInputToIso(arrival) : "",
     departure_at: departure ? localInputToIso(departure) : "",
     notes: "",
+    current_status: null,
+    major_work_planned: "",
+    estimated_mh: null,
+    required_skill: "",
+    required_equipment: "",
+    required_authorization: "",
+    planning_status: null,
   };
 }
 
@@ -59,6 +78,13 @@ function valuesFromWindow(aircraftRegistration: string, window: PlanningBoardWin
     arrival_at: window.arrivalAt,
     departure_at: window.departureAt,
     notes: window.notes ?? "",
+    current_status: (window.currentStatus as GroundWindowValues["current_status"]) ?? null,
+    major_work_planned: window.majorWorkPlanned ?? "",
+    estimated_mh: window.estimatedMh,
+    required_skill: window.requiredSkill ?? "",
+    required_equipment: window.requiredEquipment ?? "",
+    required_authorization: window.requiredAuthorization ?? "",
+    planning_status: (window.planningStatus as GroundWindowValues["planning_status"]) ?? null,
   };
 }
 
@@ -89,6 +115,9 @@ export function AddGroundWindowDialog({
   const createWindow = useCreateGroundWindow();
   const updateWindow = useUpdateGroundWindow();
   const deleteWindow = useDeleteGroundWindow();
+  // 工單連結只在編輯模式提供——新增中的窗口還沒有 id 可以連結。
+  const { data: linkableTasks } = useLinkableTasks();
+  const [selectedTaskIds, setSelectedTaskIds] = React.useState<string[]>([]);
 
   const {
     register,
@@ -112,14 +141,29 @@ export function AddGroundWindowDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isEditing, editingWindow, editingAircraftRegistration, defaultAircraftRegistration, defaultStation, defaultDateIso]);
 
+  React.useEffect(() => {
+    if (!open) return;
+    if (isEditing && editingWindow && linkableTasks) {
+      setSelectedTaskIds(linkableTasks.filter((t) => t.linkedGroundWindowId === editingWindow.id).map((t) => t.id));
+    } else {
+      setSelectedTaskIds([]);
+    }
+  }, [open, isEditing, editingWindow, linkableTasks]);
+
   const aircraftRegistration = watch("aircraft_registration");
   const station = watch("station");
   const arrivalAt = watch("arrival_at");
   const departureAt = watch("departure_at");
+  const currentStatus = watch("current_status");
+  const planningStatus = watch("planning_status");
+
+  const toggleTask = (taskId: string, checked: boolean) => {
+    setSelectedTaskIds((prev) => (checked ? [...prev, taskId] : prev.filter((id) => id !== taskId)));
+  };
 
   const onSubmit = async (values: GroundWindowValues) => {
     if (isEditing && editingWindow) {
-      await updateWindow.mutateAsync({ id: editingWindow.id, values });
+      await updateWindow.mutateAsync({ id: editingWindow.id, values: { ...values, linked_task_ids: selectedTaskIds } });
     } else {
       await createWindow.mutateAsync(values);
     }
@@ -134,7 +178,7 @@ export function AddGroundWindowDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? "編輯地面時間" : "新增地面時間"}</DialogTitle>
           <DialogDescription>登記這架飛機在某一站的進站～離站時間，用來算可用窗口與過夜機會。</DialogDescription>
@@ -200,6 +244,105 @@ export function AddGroundWindowDialog({
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="notes">備註</Label>
             <Input id="notes" {...register("notes")} placeholder="選填" />
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-3">規劃資訊（選填——若這段地面時間有排大工再填）</p>
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label>航機現況</Label>
+                  <Select
+                    value={currentStatus ?? NONE_VALUE}
+                    onValueChange={(v) => setValue("current_status", v === NONE_VALUE ? null : (v as GroundWindowValues["current_status"]))}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue placeholder="未設定" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE_VALUE}>未設定</SelectItem>
+                      {AIRCRAFT_CURRENT_STATUSES.map((s) => (
+                        <SelectItem key={s} value={s}>{AIRCRAFT_CURRENT_STATUS_LABELS[s]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>規劃狀態</Label>
+                  <Select
+                    value={planningStatus ?? NONE_VALUE}
+                    onValueChange={(v) => setValue("planning_status", v === NONE_VALUE ? null : (v as GroundWindowValues["planning_status"]))}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue placeholder="未設定" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE_VALUE}>未設定</SelectItem>
+                      {MAJOR_WORK_PLANNING_STATUSES.map((s) => (
+                        <SelectItem key={s} value={s}>{MAJOR_WORK_PLANNING_STATUS_LABELS[s]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="major_work_planned">計畫大工項目</Label>
+                <Textarea id="major_work_planned" rows={2} {...register("major_work_planned")} placeholder="例如：C 級檢查、引擎更換⋯" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="estimated_mh">預估工時（MH）</Label>
+                  <Input
+                    id="estimated_mh"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    {...register("estimated_mh", { setValueAs: (v) => (v === "" ? null : Number(v)) })}
+                    placeholder="選填"
+                  />
+                  {errors.estimated_mh && <p className="text-xs text-destructive">{errors.estimated_mh.message}</p>}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="required_skill">所需技術能力</Label>
+                  <Input id="required_skill" {...register("required_skill")} placeholder="選填" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="required_equipment">所需設備</Label>
+                  <Input id="required_equipment" {...register("required_equipment")} placeholder="選填" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="required_authorization">所需授權資格</Label>
+                  <Input id="required_authorization" {...register("required_authorization")} placeholder="選填" />
+                </div>
+              </div>
+
+              {isEditing && (
+                <div className="flex flex-col gap-1.5">
+                  <Label>排入此窗口的工單</Label>
+                  {!linkableTasks ? (
+                    <p className="text-xs text-muted-foreground">載入中⋯</p>
+                  ) : linkableTasks.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">目前沒有待辦工單可供排入</p>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto rounded-md border p-2 flex flex-col gap-2">
+                      {linkableTasks.map((t) => (
+                        <label key={t.id} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={selectedTaskIds.includes(t.id)}
+                            onCheckedChange={(checked) => toggleTask(t.id, checked === true)}
+                          />
+                          <span className="truncate">{t.taskNumber} {t.title}</span>
+                          {t.linkedGroundWindowId && t.linkedGroundWindowId !== editingWindow?.id && (
+                            <span className="text-xs text-muted-foreground shrink-0">（已排入其他窗口）</span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter className="flex items-center justify-between sm:justify-between">
