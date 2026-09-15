@@ -2,14 +2,27 @@
 
 import * as React from "react";
 import { addDays, eachDayOfInterval, isToday as isDateToday } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Upload } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, ClipboardList, MapPin, Moon, Plus, Settings2, Upload, Wrench } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { AddGroundWindowDialog, type AircraftOption } from "@/components/planning/add-ground-window-dialog";
 import { ImportGroundWindowsDialog } from "@/components/planning/import-ground-windows-dialog";
-import { useAircraftPlanningBoard, type PlanningBoardAircraft, type PlanningBoardWindow } from "@/hooks/use-aircraft-planning";
+import {
+  useAircraftPlanningBoard,
+  useBoardSettings,
+  useUpdateBoardSettings,
+  type BoardCapacitySettings,
+  type DailyCapacity,
+  type PlanningBoardAircraft,
+  type PlanningBoardWindow,
+} from "@/hooks/use-aircraft-planning";
 import { toIso, WEEKDAY_LABELS } from "@/lib/calendar-date-utils";
 import { AIRCRAFT_TYPES, STATION_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -19,6 +32,15 @@ const ALL = "__all__";
 
 function hhmm(iso: string) {
   return iso.slice(11, 16);
+}
+
+type CapacityWarningLevel = "none" | "yellow" | "red";
+
+/** Capacity Warning：黃色＝達到門檻，紅色＝超過上限。門檻可在畫面右上角調整。 */
+function capacityWarningLevel(majorWorkCount: number, settings: BoardCapacitySettings): CapacityWarningLevel {
+  if (majorWorkCount >= settings.redThreshold) return "red";
+  if (majorWorkCount >= settings.yellowThreshold) return "yellow";
+  return "none";
 }
 
 type Segment = "same" | "arrival" | "through" | "departure";
@@ -43,6 +65,52 @@ function segmentLabel(w: PlanningBoardWindow, segment: Segment) {
 type EditTarget =
   | { mode: "create"; aircraftRegistration: string; station: string; dateIso: string }
   | { mode: "edit"; aircraftRegistration: string; window: PlanningBoardWindow };
+
+/** Capacity Warning 門檻設定——先用預設值，這裡可以自己調。 */
+function CapacitySettingsPopover() {
+  const { data: settings } = useBoardSettings();
+  const updateSettings = useUpdateBoardSettings();
+  const [yellow, setYellow] = React.useState("");
+  const [red, setRed] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (settings) {
+      setYellow(String(settings.yellowThreshold));
+      setRed(String(settings.redThreshold));
+    }
+  }, [settings]);
+
+  const onSave = async () => {
+    await updateSettings.mutateAsync({ yellow_threshold: Number(yellow), red_threshold: Number(red) });
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Settings2 className="size-3.5" /> 警示門檻
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64" align="end">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm font-medium">Capacity Warning 門檻</p>
+          <p className="text-xs text-muted-foreground">同一天大工數量達到黃色門檻顯示黃色警示，達到紅色門檻顯示紅色警示。</p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="yellow_threshold">黃色門檻</Label>
+            <Input id="yellow_threshold" type="number" min="0" value={yellow} onChange={(e) => setYellow(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="red_threshold">紅色門檻</Label>
+            <Input id="red_threshold" type="number" min="0" value={red} onChange={(e) => setRed(e.target.value)} />
+          </div>
+          <Button size="sm" onClick={onSave} disabled={updateSettings.isPending}>儲存</Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /**
  * Aircraft Planning Board Lite — 直軸機號、橫軸日期的格狀表，是 Phase 6.6
@@ -75,6 +143,12 @@ export function AircraftPlanningBoard() {
 
   const periodLabel = `${startIso.slice(5)} ～ ${dayIsos[dayIsos.length - 1].slice(5)}`;
 
+  const capacityByDay = React.useMemo(() => {
+    const map = new Map<string, DailyCapacity>();
+    for (const d of board?.dailyCapacity ?? []) map.set(d.date, d);
+    return map;
+  }, [board]);
+
   const openCreateFor = (a: PlanningBoardAircraft, dayIso: string) => {
     setEditTarget({ mode: "create", aircraftRegistration: a.aircraftRegistration, station: a.homeStation, dateIso: dayIso });
   };
@@ -90,6 +164,7 @@ export function AircraftPlanningBoard() {
           <p className="text-sm text-muted-foreground">機號 × 日期的地面時間總覽 — 可用窗口、停留時間、過夜機會。</p>
         </div>
         <div className="flex items-center gap-2">
+          <CapacitySettingsPopover />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="size-3.5" /> 匯入班表
           </Button>
@@ -102,6 +177,19 @@ export function AircraftPlanningBoard() {
           </Button>
         </div>
       </div>
+
+      {!board ? (
+        <Skeleton className="h-20 w-full" />
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          <StatCard label="今日大工數量" value={board.dashboardSummary.todayMajorWorkCount} icon={Wrench} />
+          <StatCard label="本週大工數量" value={board.dashboardSummary.weekMajorWorkCount} icon={Wrench} />
+          <StatCard label="RMQ駐留航機" value={board.dashboardSummary.rmqResidentCount} icon={MapPin} />
+          <StatCard label="KHH駐留航機" value={board.dashboardSummary.khhResidentCount} icon={MapPin} />
+          <StatCard label="Overnight Aircraft" value={board.dashboardSummary.overnightAircraftCount} icon={Moon} tone="success" />
+          <StatCard label="待安排工單數量" value={board.dashboardSummary.unscheduledTaskCount} icon={ClipboardList} tone="warning" />
+        </div>
+      )}
 
       <Card>
         <CardContent className="flex flex-col gap-4 pt-5">
@@ -155,6 +243,40 @@ export function AircraftPlanningBoard() {
                   </tr>
                 </thead>
                 <tbody>
+                  <tr className="bg-muted/30">
+                    <td className="sticky left-0 z-10 border-b border-r bg-muted/30 p-2 align-middle text-[10px] font-medium text-muted-foreground">
+                      <div className="flex items-center gap-1"><CalendarClock className="size-3" /> 每日大工容量</div>
+                    </td>
+                    {dayIsos.map((dayIso) => {
+                      const capacity = capacityByDay.get(dayIso);
+                      const level = capacity && board ? capacityWarningLevel(capacity.majorWorkCount, board.capacitySettings) : "none";
+                      const title = capacity
+                        ? `大工 ${capacity.majorWorkCount} 件・MH ${capacity.mhTotal}\nRMQ ${capacity.rmqAircraftCount}・KHH ${capacity.khhAircraftCount}・TPE ${capacity.tpeAircraftCount}`
+                        : undefined;
+                      return (
+                        <td
+                          key={dayIso}
+                          title={title}
+                          className={cn(
+                            "border-b border-l p-1.5 text-center align-middle",
+                            level === "yellow" && "bg-[color-mix(in_oklab,var(--warning)_20%,transparent)]",
+                            level === "red" && "bg-destructive/15"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "text-sm font-semibold tabular-nums",
+                              level === "yellow" && "text-[var(--warning)]",
+                              level === "red" && "text-destructive"
+                            )}
+                          >
+                            {capacity?.majorWorkCount ?? 0}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">{capacity?.mhTotal ?? 0} MH</div>
+                        </td>
+                      );
+                    })}
+                  </tr>
                   {aircraft.map((a) => (
                     <tr key={a.aircraftRegistration} className="group">
                       <td className="sticky left-0 z-10 border-b border-r bg-card p-2 align-top">
