@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { addDays, eachDayOfInterval, isToday as isDateToday } from "date-fns";
-import { CalendarClock, ChevronLeft, ChevronRight, ClipboardList, MapPin, Moon, Plus, Settings2, Upload, Wrench } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, ClipboardList, Clock, MapPin, Moon, Plus, Settings2, Upload, Wrench } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -188,6 +188,9 @@ export function AircraftPlanningBoard() {
           <StatCard label="KHH駐留航機" value={board.dashboardSummary.khhResidentCount} icon={MapPin} />
           <StatCard label="Overnight Aircraft" value={board.dashboardSummary.overnightAircraftCount} icon={Moon} tone="success" />
           <StatCard label="待安排工單數量" value={board.dashboardSummary.unscheduledTaskCount} icon={ClipboardList} tone="warning" />
+          <StatCard label="RMQ地停時數（今日）" value={board.dashboardSummary.rmqGroundHoursToday} icon={Clock} />
+          <StatCard label="KHH地停時數（今日）" value={board.dashboardSummary.khhGroundHoursToday} icon={Clock} />
+          <StatCard label="TPE地停時數（今日）" value={board.dashboardSummary.tpeGroundHoursToday} icon={Clock} />
         </div>
       )}
 
@@ -250,13 +253,9 @@ export function AircraftPlanningBoard() {
                     {dayIsos.map((dayIso) => {
                       const capacity = capacityByDay.get(dayIso);
                       const level = capacity && board ? capacityWarningLevel(capacity.majorWorkCount, board.capacitySettings) : "none";
-                      const title = capacity
-                        ? `大工 ${capacity.majorWorkCount} 件・MH ${capacity.mhTotal}\nRMQ ${capacity.rmqAircraftCount}・KHH ${capacity.khhAircraftCount}・TPE ${capacity.tpeAircraftCount}`
-                        : undefined;
                       return (
                         <td
                           key={dayIso}
-                          title={title}
                           className={cn(
                             "border-b border-l p-1.5 text-center align-middle",
                             level === "yellow" && "bg-[color-mix(in_oklab,var(--warning)_20%,transparent)]",
@@ -277,6 +276,29 @@ export function AircraftPlanningBoard() {
                       );
                     })}
                   </tr>
+                  {(
+                    [
+                      { label: "RMQ 地停", countKey: "rmqAircraftCount", hoursKey: "rmqGroundHours" },
+                      { label: "KHH 地停", countKey: "khhAircraftCount", hoursKey: "khhGroundHours" },
+                      { label: "TPE 地停", countKey: "tpeAircraftCount", hoursKey: "tpeGroundHours" },
+                    ] as const
+                  ).map((row) => (
+                    <tr key={row.label} className="bg-muted/10">
+                      <td className="sticky left-0 z-10 border-b border-r bg-muted/10 p-1.5 align-middle text-[10px] text-muted-foreground">
+                        {row.label}
+                      </td>
+                      {dayIsos.map((dayIso) => {
+                        const capacity = capacityByDay.get(dayIso);
+                        const count = capacity?.[row.countKey] ?? 0;
+                        const hours = capacity?.[row.hoursKey] ?? 0;
+                        return (
+                          <td key={dayIso} className="border-b border-l p-1 text-center align-middle text-[10px] text-muted-foreground">
+                            {count > 0 ? `${count}架・${hours}h` : "–"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
                   {aircraft.map((a) => (
                     <tr key={a.aircraftRegistration} className="group">
                       <td className="sticky left-0 z-10 border-b border-r bg-card p-2 align-top">
