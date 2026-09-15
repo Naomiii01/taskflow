@@ -188,5 +188,9 @@ export const groundWindowImportRowSchema = z.object({
   arrival_at: z.string().min(1),
   departure_at: z.string().min(1),
   notes: z.string().trim().max(500).nullable().optional(),
+  // Populated only when the source file has a matching column (e.g. an ops
+  // export's "Check Remark") — otherwise this stays blank and she fills in
+  // Planning Information by hand per window.
+  major_work_planned: z.string().trim().max(500).nullable().optional(),
 });
 export type GroundWindowImportRow = z.infer<typeof groundWindowImportRowSchema>;
