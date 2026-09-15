@@ -37,6 +37,9 @@ export type DailyCapacity = {
   rmqAircraftCount: number;
   khhAircraftCount: number;
   tpeAircraftCount: number;
+  rmqGroundHours: number;
+  khhGroundHours: number;
+  tpeGroundHours: number;
 };
 
 export type DashboardSummary = {
@@ -46,6 +49,9 @@ export type DashboardSummary = {
   khhResidentCount: number;
   overnightAircraftCount: number;
   unscheduledTaskCount: number;
+  rmqGroundHoursToday: number;
+  khhGroundHoursToday: number;
+  tpeGroundHoursToday: number;
 };
 
 export type BoardCapacitySettings = { yellowThreshold: number; redThreshold: number };
