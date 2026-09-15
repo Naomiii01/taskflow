@@ -31,7 +31,7 @@ export async function login(_prevState: AuthFormState, formData: FormData): Prom
     return { error: "登入失敗：Email 或密碼不正確" };
   }
 
-  redirect("/planning");
+  redirect("/aircraft-board");
 }
 
 export async function signup(_prevState: AuthFormState, formData: FormData): Promise<AuthFormState> {
@@ -56,7 +56,7 @@ export async function signup(_prevState: AuthFormState, formData: FormData): Pro
     return { error: error.message === "User already registered" ? "此 Email 已被註冊" : "註冊失敗，請稍後再試" };
   }
 
-  redirect("/planning");
+  redirect("/aircraft-board");
 }
 
 export async function logout() {
