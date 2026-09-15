@@ -3,11 +3,19 @@ import "server-only";
 import ExcelJS from "exceljs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { Database, AircraftType, Station } from "@/types/database.types";
+import type {
+  Database,
+  AircraftType,
+  Station,
+  AircraftCurrentStatus,
+  MajorWorkPlanningStatus,
+} from "@/types/database.types";
 import { STATIONS } from "@/lib/constants";
 import * as groundWindowsRepo from "@/lib/repositories/aircraft-ground-windows-repository";
 import * as planningLookupsRepo from "@/lib/repositories/planning-lookups-repository";
-import type { GroundWindowValues, GroundWindowUpdateValues } from "@/lib/validations/planning";
+import * as tasksRepo from "@/lib/repositories/tasks-repository";
+import * as boardSettingsRepo from "@/lib/repositories/planning-board-settings-repository";
+import type { GroundWindowValues, GroundWindowUpdateValues, PlanningBoardSettingsValues } from "@/lib/validations/planning";
 
 type DB = SupabaseClient<Database, "taskflow">;
 
@@ -20,6 +28,14 @@ export type PlanningBoardWindow = {
   /** Spans at least one local midnight — a maintenance-shift opportunity. */
   isOvernight: boolean;
   notes: string | null;
+  // Planning Information — all null when no major work is planned for this stay.
+  currentStatus: AircraftCurrentStatus | null;
+  majorWorkPlanned: string | null;
+  estimatedMh: number | null;
+  requiredSkill: string | null;
+  requiredEquipment: string | null;
+  requiredAuthorization: string | null;
+  planningStatus: MajorWorkPlanningStatus | null;
 };
 
 export type PlanningBoardAircraft = {
@@ -29,11 +45,44 @@ export type PlanningBoardAircraft = {
   windows: PlanningBoardWindow[];
 };
 
+export type DailyCapacity = {
+  date: string;
+  majorWorkCount: number;
+  mhTotal: number;
+  rmqAircraftCount: number;
+  khhAircraftCount: number;
+  tpeAircraftCount: number;
+};
+
+export type DashboardSummary = {
+  todayMajorWorkCount: number;
+  weekMajorWorkCount: number;
+  rmqResidentCount: number;
+  khhResidentCount: number;
+  overnightAircraftCount: number;
+  unscheduledTaskCount: number;
+};
+
+export type CapacityWarningLevel = "none" | "yellow" | "red";
+
 export type PlanningBoard = {
   start: string;
   end: string;
   aircraft: PlanningBoardAircraft[];
+  dailyCapacity: DailyCapacity[];
+  dashboardSummary: DashboardSummary;
+  capacitySettings: { yellowThreshold: number; redThreshold: number };
 };
+
+/** Capacity Warning: 黃色＝達到門檻，紅色＝超過上限。 */
+export function capacityWarningLevel(
+  majorWorkCount: number,
+  settings: { yellowThreshold: number; redThreshold: number }
+): CapacityWarningLevel {
+  if (majorWorkCount >= settings.redThreshold) return "red";
+  if (majorWorkCount >= settings.yellowThreshold) return "yellow";
+  return "none";
+}
 
 // Every timestamp in this feature is entered and displayed as a plain local
 // wall-clock value (no timezone math) — see aircraft-ground-windows datetime
@@ -56,20 +105,81 @@ function toBoardWindow(row: Awaited<ReturnType<typeof groundWindowsRepo.findWind
     groundTimeMinutes,
     isOvernight: dateKeyOf(row.arrival_at) !== dateKeyOf(row.departure_at),
     notes: row.notes,
+    currentStatus: row.current_status,
+    majorWorkPlanned: row.major_work_planned,
+    estimatedMh: row.estimated_mh,
+    requiredSkill: row.required_skill,
+    requiredEquipment: row.required_equipment,
+    requiredAuthorization: row.required_authorization,
+    planningStatus: row.planning_status,
   };
+}
+
+/** Every calendar-day key a window touches within [start, end) — a window
+ * spanning multiple days (an overnight, or a multi-day stay) counts toward
+ * each day's capacity, not just its arrival day. `end` is exclusive (the day
+ * after the board's last visible column), matching `getPlanningBoard`. */
+function dayKeysTouched(window: PlanningBoardWindow, start: string, end: string): string[] {
+  const arrivalKey = dateKeyOf(window.arrivalAt);
+  const departureKey = dateKeyOf(window.departureAt);
+  const keys: string[] = [];
+  const cursor = new Date(`${arrivalKey < start ? start : arrivalKey}T00:00:00.000Z`);
+  while (true) {
+    const key = cursor.toISOString().slice(0, 10);
+    if (key >= end || key > departureKey) break;
+    keys.push(key);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return keys;
+}
+
+function hasMajorWork(w: PlanningBoardWindow): boolean {
+  return !!(w.majorWorkPlanned && w.majorWorkPlanned.trim());
+}
+
+function todayKeyAndNextDay(): { todayKey: string; nextDayKey: string } {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const next = new Date(`${todayKey}T00:00:00.000Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return { todayKey, nextDayKey: next.toISOString().slice(0, 10) };
+}
+
+/** Monday-through-Sunday bounds for "本週" — same week-start convention
+ * (Monday) as tasks-repository's `dueThisWeek` filter. `end` is exclusive
+ * (the Monday after). */
+function thisWeekBounds(): { start: string; end: string } {
+  const today = new Date();
+  const day = today.getUTCDay();
+  const diffToMonday = (day + 6) % 7;
+  const monday = new Date(today);
+  monday.setUTCDate(monday.getUTCDate() - diffToMonday);
+  const start = monday.toISOString().slice(0, 10);
+  const nextMonday = new Date(monday);
+  nextMonday.setUTCDate(nextMonday.getUTCDate() + 7);
+  return { start, end: nextMonday.toISOString().slice(0, 10) };
 }
 
 /**
  * Aircraft Planning Board Lite: one row per active Fleet Master aircraft,
- * each carrying every ground-time window that overlaps [start, end).
+ * each carrying every ground-time window that overlaps [start, end), plus
+ * Capacity Information (per visible day) and a Dashboard Summary computed
+ * against the real "today"/"this week" — independent of whichever date
+ * range the grid is currently scrolled to.
  * `end` should be the day AFTER the board's last visible column (exclusive
  * upper bound) — the grid buckets a window into every day column it
  * touches client-side, since a window can span more than one day.
  */
 export async function getPlanningBoard(supabase: DB, start: string, end: string): Promise<PlanningBoard> {
-  const [fleet, windows] = await Promise.all([
+  const { todayKey, nextDayKey } = todayKeyAndNextDay();
+  const { start: weekStart, end: weekEnd } = thisWeekBounds();
+
+  const [fleet, windows, todayWindows, weekWindows, settings, unscheduledTaskCount] = await Promise.all([
     planningLookupsRepo.findAllFleet(supabase),
     groundWindowsRepo.findWindowsOverlapping(supabase, start, end),
+    groundWindowsRepo.findWindowsOverlapping(supabase, todayKey, nextDayKey),
+    groundWindowsRepo.findWindowsOverlapping(supabase, weekStart, weekEnd),
+    boardSettingsRepo.getSettings(supabase),
+    tasksRepo.countUnscheduledTodoTasks(supabase),
   ]);
 
   const windowsByAircraft = new Map<string, PlanningBoardWindow[]>();
@@ -80,17 +190,62 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
     else windowsByAircraft.set(w.aircraft_registration, [boardWindow]);
   }
 
+  const aircraft: PlanningBoardAircraft[] = fleet
+    .filter((f) => f.status === "Active")
+    .map((f) => ({
+      aircraftRegistration: f.aircraft_registration,
+      aircraftType: f.aircraft_type,
+      homeStation: f.station,
+      windows: windowsByAircraft.get(f.aircraft_registration) ?? [],
+    }));
+
+  // Capacity Information — one bucket per visible day, tallied from every
+  // window touching that day (a multi-day stay counts toward each day it
+  // occupies, per dayKeysTouched — capacity is consumed on every day a big
+  // job is in progress, not only the day it starts).
+  const dailyMap = new Map<string, DailyCapacity>();
+  for (const w of windows) {
+    const boardWindow = toBoardWindow(w);
+    for (const day of dayKeysTouched(boardWindow, start, end)) {
+      let bucket = dailyMap.get(day);
+      if (!bucket) {
+        bucket = { date: day, majorWorkCount: 0, mhTotal: 0, rmqAircraftCount: 0, khhAircraftCount: 0, tpeAircraftCount: 0 };
+        dailyMap.set(day, bucket);
+      }
+      if (hasMajorWork(boardWindow)) {
+        bucket.majorWorkCount += 1;
+        bucket.mhTotal += boardWindow.estimatedMh ?? 0;
+      }
+      if (w.station === "RMQ") bucket.rmqAircraftCount += 1;
+      if (w.station === "KHH") bucket.khhAircraftCount += 1;
+      if (w.station === "TPE") bucket.tpeAircraftCount += 1;
+    }
+  }
+  const dailyCapacity = Array.from(dailyMap.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  // Dashboard Summary.
+  const todayEntries = todayWindows.map((w) => ({ reg: w.aircraft_registration, bw: toBoardWindow(w) }));
+  const weekEntries = weekWindows.map((w) => ({ bw: toBoardWindow(w) }));
+  const todayMajorWorkCount = todayEntries.filter((e) => hasMajorWork(e.bw)).length;
+  const weekMajorWorkCount = weekEntries.filter((e) => hasMajorWork(e.bw)).length;
+  const rmqResidentCount = new Set(todayWindows.filter((w) => w.station === "RMQ").map((w) => w.aircraft_registration)).size;
+  const khhResidentCount = new Set(todayWindows.filter((w) => w.station === "KHH").map((w) => w.aircraft_registration)).size;
+  const overnightAircraftCount = new Set(todayEntries.filter((e) => e.bw.isOvernight).map((e) => e.reg)).size;
+
   return {
     start,
     end,
-    aircraft: fleet
-      .filter((f) => f.status === "Active")
-      .map((f) => ({
-        aircraftRegistration: f.aircraft_registration,
-        aircraftType: f.aircraft_type,
-        homeStation: f.station,
-        windows: windowsByAircraft.get(f.aircraft_registration) ?? [],
-      })),
+    aircraft,
+    dailyCapacity,
+    dashboardSummary: {
+      todayMajorWorkCount,
+      weekMajorWorkCount,
+      rmqResidentCount,
+      khhResidentCount,
+      overnightAircraftCount,
+      unscheduledTaskCount,
+    },
+    capacitySettings: { yellowThreshold: settings.yellow_threshold, redThreshold: settings.red_threshold },
   };
 }
 
@@ -103,7 +258,17 @@ export async function createGroundWindow(supabase: DB, values: GroundWindowValue
     notes: values.notes || null,
     source: "manual",
     created_by: currentUserId,
+    current_status: (values.current_status || null) as AircraftCurrentStatus | null,
+    major_work_planned: values.major_work_planned || null,
+    estimated_mh: values.estimated_mh ?? null,
+    required_skill: values.required_skill || null,
+    required_equipment: values.required_equipment || null,
+    required_authorization: values.required_authorization || null,
+    planning_status: (values.planning_status || null) as MajorWorkPlanningStatus | null,
   });
+  if (values.linked_task_ids !== undefined) {
+    await tasksRepo.setLinkedTasksForWindow(supabase, row.id, values.linked_task_ids);
+  }
   return toBoardWindow(row);
 }
 
@@ -114,12 +279,52 @@ export async function updateGroundWindow(supabase: DB, id: string, values: Groun
   if (values.arrival_at !== undefined) patch.arrival_at = values.arrival_at;
   if (values.departure_at !== undefined) patch.departure_at = values.departure_at;
   if (values.notes !== undefined) patch.notes = values.notes || null;
+  if (values.current_status !== undefined)
+    patch.current_status = (values.current_status || null) as AircraftCurrentStatus | null;
+  if (values.major_work_planned !== undefined) patch.major_work_planned = values.major_work_planned || null;
+  if (values.estimated_mh !== undefined) patch.estimated_mh = values.estimated_mh ?? null;
+  if (values.required_skill !== undefined) patch.required_skill = values.required_skill || null;
+  if (values.required_equipment !== undefined) patch.required_equipment = values.required_equipment || null;
+  if (values.required_authorization !== undefined) patch.required_authorization = values.required_authorization || null;
+  if (values.planning_status !== undefined)
+    patch.planning_status = (values.planning_status || null) as MajorWorkPlanningStatus | null;
   const row = await groundWindowsRepo.updateWindow(supabase, id, patch);
+  if (values.linked_task_ids !== undefined) {
+    await tasksRepo.setLinkedTasksForWindow(supabase, id, values.linked_task_ids);
+  }
   return toBoardWindow(row);
 }
 
 export async function deleteGroundWindow(supabase: DB, id: string) {
   await groundWindowsRepo.deleteWindow(supabase, id);
+}
+
+// --- Capacity Warning settings -----------------------------------------------
+
+export async function getBoardSettings(supabase: DB) {
+  const row = await boardSettingsRepo.getSettings(supabase);
+  return { yellowThreshold: row.yellow_threshold, redThreshold: row.red_threshold };
+}
+
+export async function updateBoardSettings(supabase: DB, values: PlanningBoardSettingsValues, currentUserId: string) {
+  const row = await boardSettingsRepo.updateSettings(
+    supabase,
+    { yellow_threshold: values.yellow_threshold, red_threshold: values.red_threshold },
+    currentUserId
+  );
+  return { yellowThreshold: row.yellow_threshold, redThreshold: row.red_threshold };
+}
+
+// --- Task ↔ ground-window linking --------------------------------------------
+
+export async function getLinkableTasks(supabase: DB) {
+  const rows = await tasksRepo.findTodoTasksForLinking(supabase);
+  return rows.map((r) => ({
+    id: r.id,
+    taskNumber: r.task_number,
+    title: r.title,
+    linkedGroundWindowId: r.linked_ground_window_id,
+  }));
 }
 
 // --- Schedule file import ---------------------------------------------------
