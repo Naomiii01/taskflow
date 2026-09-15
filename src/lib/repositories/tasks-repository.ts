@@ -294,3 +294,49 @@ export async function restoreTask(supabase: DB, id: string) {
   if (error) throw error;
   return data;
 }
+
+// --- Aircraft Planning Board Lite: task ↔ ground-window linking -----------
+
+/** Every open (Todo) task, for the ground-window dialog's "排入此窗口的工單"
+ * picker — includes ones already linked elsewhere so re-assigning is
+ * possible, not just picking from a pool of never-linked tasks. */
+export async function findTodoTasksForLinking(supabase: DB) {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, task_number, title, linked_ground_window_id")
+    .eq("status", "Todo")
+    .is("deleted_at", null)
+    .order("task_number");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** "待安排工單數量" — Todo tasks that haven't been scheduled into any
+ * ground-time window yet. */
+export async function countUnscheduledTodoTasks(supabase: DB) {
+  const { count, error } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "Todo")
+    .is("deleted_at", null)
+    .is("linked_ground_window_id", null);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Replaces the full set of tasks linked to a ground window: unlinks
+ * whatever isn't in `taskIds` anymore, then links everything in it. Two
+ * statements rather than a transaction — acceptable for a Lite feature with
+ * single-digit task counts per window. */
+export async function setLinkedTasksForWindow(supabase: DB, windowId: string, taskIds: string[]) {
+  const clearQuery = supabase.from("tasks").update({ linked_ground_window_id: null }).eq("linked_ground_window_id", windowId);
+  const { error: clearError } = taskIds.length
+    ? await clearQuery.not("id", "in", `(${taskIds.join(",")})`)
+    : await clearQuery;
+  if (clearError) throw clearError;
+
+  if (taskIds.length) {
+    const { error: linkError } = await supabase.from("tasks").update({ linked_ground_window_id: windowId }).in("id", taskIds);
+    if (linkError) throw linkError;
+  }
+}
