@@ -6,7 +6,7 @@ export function Sidebar() {
   return (
     <aside className="glass-panel hidden w-64 shrink-0 flex-col border-r text-sidebar-foreground md:flex">
       <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
-        <Link href="/planning" className="flex items-center gap-2 font-semibold tracking-tight">
+        <Link href="/aircraft-board" className="flex items-center gap-2 font-semibold tracking-tight">
           <div className="flex size-7 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground text-xs font-bold shadow-soft">
             TF
           </div>
