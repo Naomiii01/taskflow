@@ -9,6 +9,7 @@ import type {
   Station,
   AircraftCurrentStatus,
   MajorWorkPlanningStatus,
+  WorkShift,
 } from "@/types/database.types";
 import { STATIONS } from "@/lib/constants";
 import * as groundWindowsRepo from "@/lib/repositories/aircraft-ground-windows-repository";
@@ -36,6 +37,8 @@ export type PlanningBoardWindow = {
   requiredEquipment: string | null;
   requiredAuthorization: string | null;
   planningStatus: MajorWorkPlanningStatus | null;
+  // 早班／中班／大夜班——只在有計畫大工項目時才有意義。
+  shift: WorkShift | null;
 };
 
 export type PlanningBoardAircraft = {
@@ -125,6 +128,7 @@ function toBoardWindow(row: Awaited<ReturnType<typeof groundWindowsRepo.findWind
     requiredEquipment: row.required_equipment,
     requiredAuthorization: row.required_authorization,
     planningStatus: row.planning_status,
+    shift: row.shift,
   };
 }
 
@@ -333,6 +337,7 @@ export async function createGroundWindow(supabase: DB, values: GroundWindowValue
     required_equipment: values.required_equipment || null,
     required_authorization: values.required_authorization || null,
     planning_status: (values.planning_status || null) as MajorWorkPlanningStatus | null,
+    shift: (values.shift || null) as WorkShift | null,
   });
   if (values.linked_task_ids !== undefined) {
     await tasksRepo.setLinkedTasksForWindow(supabase, row.id, values.linked_task_ids);
@@ -356,6 +361,7 @@ export async function updateGroundWindow(supabase: DB, id: string, values: Groun
   if (values.required_authorization !== undefined) patch.required_authorization = values.required_authorization || null;
   if (values.planning_status !== undefined)
     patch.planning_status = (values.planning_status || null) as MajorWorkPlanningStatus | null;
+  if (values.shift !== undefined) patch.shift = (values.shift || null) as WorkShift | null;
   const row = await groundWindowsRepo.updateWindow(supabase, id, patch);
   if (values.linked_task_ids !== undefined) {
     await tasksRepo.setLinkedTasksForWindow(supabase, id, values.linked_task_ids);
@@ -510,6 +516,28 @@ function cellToString(raw: unknown): string {
   return String(raw).trim();
 }
 
+/** Most exports are UTF-8, but a raw ops-system export is often Big5
+ * (Traditional Chinese, the common Windows encoding for Taiwan airline ops
+ * systems). Big5 is ASCII-compatible for the plain columns (registration,
+ * station codes, timestamps), so a file read as UTF-8 by mistake still
+ * "works" — except every Chinese remark (Check Remark, 計畫大工項目) comes
+ * out as U+FFFD replacement characters, silently corrupting exactly the
+ * free-text field this import cares most about. Detect that and re-decode
+ * as Big5 instead of trusting the file's stated MIME type. */
+function decodeFileText(buffer: Buffer): string {
+  const utf8Text = buffer.toString("utf-8");
+  if (!utf8Text.includes(" ")) return utf8Text;
+  try {
+    return new TextDecoder("big5").decode(buffer);
+  } catch {
+    return utf8Text;
+  }
+}
+
+function findColumnIndex(headerRow: unknown[], names: string[]): number {
+  return headerRow.findIndex((h) => names.includes(normalizeHeader(cellToString(h))));
+}
+
 /** Minimal RFC4180-ish CSV line splitter — handles quoted fields containing
  * commas, no external dependency needed for something this small. */
 function parseCsv(text: string): string[][] {
@@ -569,7 +597,7 @@ export async function parseImportFile(fileBuffer: Buffer, mimeType: string, file
   let dataRows: unknown[][];
 
   if (isCsv) {
-    const text = fileBuffer.toString("utf-8").replace(/^﻿/, "");
+    const text = decodeFileText(fileBuffer).replace(/^﻿/, "");
     const rows = parseCsv(text);
     if (rows.length < 1) return [];
     headerRow = rows[0];
@@ -627,18 +655,154 @@ export async function parseImportFile(fileBuffer: Buffer, mimeType: string, file
 
   if (arrivalStationColumnIndex === -1) return parsedRows;
 
-  // Keep only the rows where the aircraft never actually left the station
-  // (dep === arrival) — those are ground/maintenance events. Everything
-  // else is a real flight to somewhere else and gets silently dropped, so
-  // she can upload the raw ops export without pre-filtering it herself.
-  // (Note: `skipped` row numbers reported later count positions among these
-  // surviving rows, not original spreadsheet line numbers, since hundreds of
-  // real flights are routinely dropped right here before that stage runs.)
-  return parsedRows.filter((parsed, i) => {
-    const arrivalStation = cellToString(dataRows[i][arrivalStationColumnIndex]).toUpperCase();
-    if (!parsed.station || !arrivalStation) return true;
-    return parsed.station === arrivalStation;
-  });
+  return deriveOpsExportGroundWindows(headerRow, dataRows, arrivalStationColumnIndex) ?? parsedRows;
+}
+
+type OpsMovement = {
+  registration: string;
+  depStation: string;
+  arrStation: string;
+  std: string | null;
+  sta: string | null;
+  /** Dep === Arr: the aircraft never actually left — a maintenance/ground
+   * pseudo-flight rather than a real one. */
+  isGroundEvent: boolean;
+  flightCode: string;
+  remark: string | null;
+};
+
+/**
+ * A raw ops export's Dep===Arr rows (AD/AWS/LTM/LM/A/AOG) are only the
+ * *explicitly logged* maintenance events — nowhere near the full ground-time
+ * picture. Most of an aircraft's time at TPE/RMQ/KHH is simply the gap
+ * between landing on one real flight and departing on the next, with no
+ * maintenance row at all (an ordinary overnight, e.g.), and that gap is
+ * exactly what "Ground Time" / "Overnight Opportunity" need to show. So
+ * instead of filtering to the maintenance rows, this walks every aircraft's
+ * real flights (Dep !== Arr) in chronological order and turns each
+ * landing→next-departure gap at a home station (TPE/TSA/RMQ/KHH — outstation
+ * layovers aren't tracked) into its own ground window. Any Dep===Arr row
+ * whose time range falls inside one of those windows gets folded in as that
+ * window's Planning Information (its Check Remark → 計畫大工項目, its
+ * short code → 備註) rather than creating a separate, narrower row for the
+ * same physical ground stay. A Dep===Arr row that *isn't* inside any derived
+ * window (e.g. the aircraft doesn't fly at all within the exported date
+ * range) still becomes its own window, same as the previous behaviour, so
+ * nothing that was captured before is lost.
+ */
+function deriveOpsExportGroundWindows(
+  headerRow: unknown[],
+  dataRows: unknown[][],
+  arrivalStationColumnIndex: number
+): ImportedRow[] | null {
+  const registrationIdx = findColumnIndex(headerRow, ["機號", "aircraft_registration", "registration", "aircraft"]);
+  const depIdx = findColumnIndex(headerRow, ["dep"]);
+  const stdIdx = findColumnIndex(headerRow, ["std"]);
+  const staIdx = findColumnIndex(headerRow, ["sta"]);
+  if (registrationIdx === -1 || depIdx === -1 || stdIdx === -1 || staIdx === -1) return null;
+  const flightIdx = findColumnIndex(headerRow, ["flight"]);
+  const remarkIdx = findColumnIndex(headerRow, ["check remark", "計畫大工項目", "大工項目", "major_work_planned", "major work"]);
+
+  const movements: OpsMovement[] = dataRows
+    .map((row): OpsMovement => {
+      const registration = cellToString(row[registrationIdx]).toUpperCase();
+      const depStation = cellToString(row[depIdx]).toUpperCase();
+      const arrStation = cellToString(row[arrivalStationColumnIndex]).toUpperCase();
+      return {
+        registration,
+        depStation,
+        arrStation,
+        std: parseDateTimeCell(row[stdIdx]),
+        sta: parseDateTimeCell(row[staIdx]),
+        isGroundEvent: !!depStation && depStation === arrStation,
+        flightCode: flightIdx === -1 ? "" : cellToString(row[flightIdx]),
+        remark: remarkIdx === -1 ? null : cellToString(row[remarkIdx]) || null,
+      };
+    })
+    .filter((m) => m.registration && m.depStation && m.arrStation && m.std && m.sta);
+
+  const HOME_STATIONS = new Set<string>(STATIONS);
+
+  const realFlightsByReg = new Map<string, OpsMovement[]>();
+  for (const m of movements) {
+    if (m.isGroundEvent) continue;
+    const key = normalizeRegistration(m.registration);
+    const list = realFlightsByReg.get(key);
+    if (list) list.push(m);
+    else realFlightsByReg.set(key, [m]);
+  }
+
+  type DerivedWindow = {
+    registration: string;
+    station: string;
+    arrival_at: string;
+    departure_at: string;
+    notesParts: string[];
+    majorWorkParts: string[];
+  };
+  const derived: DerivedWindow[] = [];
+
+  for (const list of realFlightsByReg.values()) {
+    list.sort((a, b) => (a.std! < b.std! ? -1 : a.std! > b.std! ? 1 : 0));
+    for (let i = 0; i < list.length - 1; i++) {
+      const cur = list[i];
+      const next = list[i + 1];
+      // Chain broken (a gap in the export, or a positioning leg we can't
+      // see) — can't tell where the aircraft actually sat, so skip rather
+      // than guess.
+      if (cur.arrStation !== next.depStation) continue;
+      const station = cur.arrStation;
+      if (!HOME_STATIONS.has(station)) continue;
+      if (!(next.std! > cur.sta!)) continue; // zero/negative gap — schedule overlap or duplicate row
+      derived.push({
+        registration: cur.registration,
+        station,
+        arrival_at: cur.sta!,
+        departure_at: next.std!,
+        notesParts: [],
+        majorWorkParts: [],
+      });
+    }
+  }
+
+  const standalone: ImportedRow[] = [];
+  for (const ge of movements.filter((m) => m.isGroundEvent)) {
+    if (!HOME_STATIONS.has(ge.arrStation)) continue;
+    const geKey = normalizeRegistration(ge.registration);
+    const match = derived.find(
+      (d) =>
+        normalizeRegistration(d.registration) === geKey &&
+        d.station === ge.arrStation &&
+        d.arrival_at <= ge.std! &&
+        d.departure_at >= ge.sta!
+    );
+    if (match) {
+      if (ge.remark) match.majorWorkParts.push(ge.remark);
+      if (ge.flightCode) match.notesParts.push(ge.flightCode);
+    } else {
+      // No bordering real flights in this export to bracket it — fall back
+      // to the maintenance row's own start/end, same as before.
+      standalone.push({
+        aircraft_registration: ge.registration,
+        station: ge.arrStation,
+        arrival_at: ge.std,
+        departure_at: ge.sta,
+        notes: ge.flightCode || null,
+        major_work_planned: ge.remark,
+      });
+    }
+  }
+
+  const derivedRows: ImportedRow[] = derived.map((d) => ({
+    aircraft_registration: d.registration,
+    station: d.station,
+    arrival_at: d.arrival_at,
+    departure_at: d.departure_at,
+    notes: d.notesParts.length ? Array.from(new Set(d.notesParts)).join(", ") : null,
+    major_work_planned: d.majorWorkParts.length ? d.majorWorkParts.join("\n") : null,
+  }));
+
+  return [...derivedRows, ...standalone];
 }
 
 /**
