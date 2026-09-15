@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import type { GroundWindowValues, GroundWindowUpdateValues } from "@/lib/validations/planning";
+import type { GroundWindowValues, GroundWindowUpdateValues, PlanningBoardSettingsValues } from "@/lib/validations/planning";
 
 export type PlanningBoardWindow = {
   id: string;
@@ -13,6 +13,14 @@ export type PlanningBoardWindow = {
   groundTimeMinutes: number;
   isOvernight: boolean;
   notes: string | null;
+  // Planning Information — null when this ground stay has no major work planned.
+  currentStatus: string | null;
+  majorWorkPlanned: string | null;
+  estimatedMh: number | null;
+  requiredSkill: string | null;
+  requiredEquipment: string | null;
+  requiredAuthorization: string | null;
+  planningStatus: string | null;
 };
 
 export type PlanningBoardAircraft = {
@@ -22,15 +30,45 @@ export type PlanningBoardAircraft = {
   windows: PlanningBoardWindow[];
 };
 
+export type DailyCapacity = {
+  date: string;
+  majorWorkCount: number;
+  mhTotal: number;
+  rmqAircraftCount: number;
+  khhAircraftCount: number;
+  tpeAircraftCount: number;
+};
+
+export type DashboardSummary = {
+  todayMajorWorkCount: number;
+  weekMajorWorkCount: number;
+  rmqResidentCount: number;
+  khhResidentCount: number;
+  overnightAircraftCount: number;
+  unscheduledTaskCount: number;
+};
+
+export type BoardCapacitySettings = { yellowThreshold: number; redThreshold: number };
+
 export type PlanningBoard = {
   start: string;
   end: string;
   aircraft: PlanningBoardAircraft[];
+  dailyCapacity: DailyCapacity[];
+  dashboardSummary: DashboardSummary;
+  capacitySettings: BoardCapacitySettings;
 };
 
 export type ImportResult = {
   imported: number;
   skipped: { row: number; reason: string }[];
+};
+
+export type LinkableTask = {
+  id: string;
+  taskNumber: string;
+  title: string;
+  linkedGroundWindowId: string | null;
 };
 
 async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
@@ -60,6 +98,8 @@ export function useCreateGroundWindow() {
     onSuccess: () => {
       toast.success("地面時間已新增");
       queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
+      queryClient.invalidateQueries({ queryKey: ["planning", "linkable-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -73,6 +113,8 @@ export function useUpdateGroundWindow() {
     onSuccess: () => {
       toast.success("地面時間已更新");
       queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
+      queryClient.invalidateQueries({ queryKey: ["planning", "linkable-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -85,8 +127,40 @@ export function useDeleteGroundWindow() {
     onSuccess: () => {
       toast.success("地面時間已刪除");
       queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
+      queryClient.invalidateQueries({ queryKey: ["planning", "linkable-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+/** Capacity Warning 門檻——先用預設值，畫面上可以自己調。 */
+export function useBoardSettings() {
+  return useQuery({
+    queryKey: ["planning", "board-settings"],
+    queryFn: () => fetchJson<BoardCapacitySettings>("/api/planning/board-settings"),
+  });
+}
+
+export function useUpdateBoardSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (values: PlanningBoardSettingsValues) =>
+      fetchJson<BoardCapacitySettings>("/api/planning/board-settings", { method: "PATCH", body: JSON.stringify(values) }),
+    onSuccess: () => {
+      toast.success("警示門檻已更新");
+      queryClient.invalidateQueries({ queryKey: ["planning", "board-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+/** Todo 工單清單——供地面時間視窗的「排入此窗口的工單」勾選器使用。 */
+export function useLinkableTasks() {
+  return useQuery({
+    queryKey: ["planning", "linkable-tasks"],
+    queryFn: () => fetchJson<LinkableTask[]>("/api/planning/linkable-tasks"),
   });
 }
 
