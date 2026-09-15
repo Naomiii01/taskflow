@@ -49,9 +49,17 @@ export type DailyCapacity = {
   date: string;
   majorWorkCount: number;
   mhTotal: number;
+  // "有幾架飛機停在這一站" — a headcount, not a duration.
   rmqAircraftCount: number;
   khhAircraftCount: number;
   tpeAircraftCount: number;
+  // 地停時間 — actual grounded hours at that station ON THIS CALENDAR DAY
+  // only (the window's overlap with this day, capped at 24h), not the whole
+  // window's length. A multi-day stay contributes a different number of
+  // hours to each day it touches instead of double-counting its full length.
+  rmqGroundHours: number;
+  khhGroundHours: number;
+  tpeGroundHours: number;
 };
 
 export type DashboardSummary = {
@@ -61,6 +69,11 @@ export type DashboardSummary = {
   khhResidentCount: number;
   overnightAircraftCount: number;
   unscheduledTaskCount: number;
+  // 地停時間（今日）— total grounded hours at each station today, same
+  // overlap-based calculation as DailyCapacity's per-day figures.
+  rmqGroundHoursToday: number;
+  khhGroundHoursToday: number;
+  tpeGroundHoursToday: number;
 };
 
 export type CapacityWarningLevel = "none" | "yellow" | "red";
@@ -137,6 +150,26 @@ function hasMajorWork(w: PlanningBoardWindow): boolean {
   return !!(w.majorWorkPlanned && w.majorWorkPlanned.trim());
 }
 
+/** Minutes of overlap between [aStart, aEnd) and [bStart, bEnd) — used to
+ * turn a ground window's raw arrival/departure into "how many hours was it
+ * actually grounded on THIS specific day", so a multi-day stay's length
+ * isn't double-counted across every day it touches. */
+function overlapMinutes(aStartIso: string, aEndIso: string, bStartIso: string, bEndIso: string): number {
+  const start = Math.max(new Date(aStartIso).getTime(), new Date(bStartIso).getTime());
+  const end = Math.min(new Date(aEndIso).getTime(), new Date(bEndIso).getTime());
+  return Math.max(0, Math.round((end - start) / 60000));
+}
+
+function addDaysToKey(dayKey: string, days: number): string {
+  const d = new Date(`${dayKey}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
 function todayKeyAndNextDay(): { todayKey: string; nextDayKey: string } {
   const todayKey = new Date().toISOString().slice(0, 10);
   const next = new Date(`${todayKey}T00:00:00.000Z`);
@@ -202,14 +235,25 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
   // Capacity Information — one bucket per visible day, tallied from every
   // window touching that day (a multi-day stay counts toward each day it
   // occupies, per dayKeysTouched — capacity is consumed on every day a big
-  // job is in progress, not only the day it starts).
+  // job is in progress, not only the day it starts). Ground hours use the
+  // actual overlap with that specific day, not the window's full length.
   const dailyMap = new Map<string, DailyCapacity>();
   for (const w of windows) {
     const boardWindow = toBoardWindow(w);
     for (const day of dayKeysTouched(boardWindow, start, end)) {
       let bucket = dailyMap.get(day);
       if (!bucket) {
-        bucket = { date: day, majorWorkCount: 0, mhTotal: 0, rmqAircraftCount: 0, khhAircraftCount: 0, tpeAircraftCount: 0 };
+        bucket = {
+          date: day,
+          majorWorkCount: 0,
+          mhTotal: 0,
+          rmqAircraftCount: 0,
+          khhAircraftCount: 0,
+          tpeAircraftCount: 0,
+          rmqGroundHours: 0,
+          khhGroundHours: 0,
+          tpeGroundHours: 0,
+        };
         dailyMap.set(day, bucket);
       }
       if (hasMajorWork(boardWindow)) {
@@ -219,9 +263,18 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
       if (w.station === "RMQ") bucket.rmqAircraftCount += 1;
       if (w.station === "KHH") bucket.khhAircraftCount += 1;
       if (w.station === "TPE") bucket.tpeAircraftCount += 1;
+
+      const dayStartIso = `${day}T00:00:00.000Z`;
+      const dayEndIso = `${addDaysToKey(day, 1)}T00:00:00.000Z`;
+      const groundHoursThisDay = overlapMinutes(boardWindow.arrivalAt, boardWindow.departureAt, dayStartIso, dayEndIso) / 60;
+      if (w.station === "RMQ") bucket.rmqGroundHours += groundHoursThisDay;
+      if (w.station === "KHH") bucket.khhGroundHours += groundHoursThisDay;
+      if (w.station === "TPE") bucket.tpeGroundHours += groundHoursThisDay;
     }
   }
-  const dailyCapacity = Array.from(dailyMap.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
+  const dailyCapacity = Array.from(dailyMap.values())
+    .map((d) => ({ ...d, rmqGroundHours: round1(d.rmqGroundHours), khhGroundHours: round1(d.khhGroundHours), tpeGroundHours: round1(d.tpeGroundHours) }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
 
   // Dashboard Summary.
   const todayEntries = todayWindows.map((w) => ({ reg: w.aircraft_registration, bw: toBoardWindow(w) }));
@@ -231,6 +284,18 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
   const rmqResidentCount = new Set(todayWindows.filter((w) => w.station === "RMQ").map((w) => w.aircraft_registration)).size;
   const khhResidentCount = new Set(todayWindows.filter((w) => w.station === "KHH").map((w) => w.aircraft_registration)).size;
   const overnightAircraftCount = new Set(todayEntries.filter((e) => e.bw.isOvernight).map((e) => e.reg)).size;
+
+  const todayStartIso = `${todayKey}T00:00:00.000Z`;
+  const todayEndIso = `${nextDayKey}T00:00:00.000Z`;
+  let rmqGroundHoursToday = 0;
+  let khhGroundHoursToday = 0;
+  let tpeGroundHoursToday = 0;
+  for (const w of todayWindows) {
+    const hours = overlapMinutes(w.arrival_at, w.departure_at, todayStartIso, todayEndIso) / 60;
+    if (w.station === "RMQ") rmqGroundHoursToday += hours;
+    if (w.station === "KHH") khhGroundHoursToday += hours;
+    if (w.station === "TPE") tpeGroundHoursToday += hours;
+  }
 
   return {
     start,
@@ -244,6 +309,9 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
       khhResidentCount,
       overnightAircraftCount,
       unscheduledTaskCount,
+      rmqGroundHoursToday: round1(rmqGroundHoursToday),
+      khhGroundHoursToday: round1(khhGroundHoursToday),
+      tpeGroundHoursToday: round1(tpeGroundHoursToday),
     },
     capacitySettings: { yellowThreshold: settings.yellow_threshold, redThreshold: settings.red_threshold },
   };
@@ -335,6 +403,11 @@ export type ImportedRow = {
   arrival_at: string | null;
   departure_at: string | null;
   notes: string | null;
+  // Optional — most schedule exports won't have this column, but a
+  // maintenance/ops export sometimes carries a ready-made "check remark" per
+  // ground event, which maps straight onto Planning Information's 計畫大工項目
+  // instead of getting lumped into 備註.
+  major_work_planned: string | null;
 };
 
 export type ImportResult = {
@@ -349,19 +422,62 @@ const HEADER_ALIASES: Record<string, keyof ImportedRow> = {
   "aircraft": "aircraft_registration",
   "站別": "station",
   "station": "station",
+  // "Dep" — a flight-ops export's departure-station column. For a genuine
+  // ground/maintenance event (see ARRIVAL_STATION_HEADERS below) this is the
+  // one station the aircraft actually sits at the whole time.
+  "dep": "station",
   "進站時間": "arrival_at",
   "進站": "arrival_at",
   "arrival": "arrival_at",
   "arrival_at": "arrival_at",
+  // "STD" (Scheduled Time of Departure) — for a real flight this is when it
+  // pushes back; for a ground/maintenance pseudo-flight (Dep === Arr) it's
+  // when the aircraft goes down for that event, i.e. our window's start.
+  "std": "arrival_at",
   "離站時間": "departure_at",
   "離站": "departure_at",
   "departure": "departure_at",
   "departure_at": "departure_at",
+  // "STA" (Scheduled Time of Arrival) — the mirror of STD: for a ground event
+  // this is when the aircraft comes back up, i.e. our window's end.
+  "sta": "departure_at",
   "備註": "notes",
   "notes": "notes",
   "remark": "notes",
   "remarks": "notes",
+  // Ops-export "Flight" column holds a short code (a real flight number, or
+  // AD/AWS/LTM/LM/A/AOG for a ground/maintenance event) — worth keeping as a
+  // short tag even though the real description comes from Check Remark.
+  "flight": "notes",
+  "計畫大工項目": "major_work_planned",
+  "大工項目": "major_work_planned",
+  "major_work_planned": "major_work_planned",
+  "major work": "major_work_planned",
+  "check remark": "major_work_planned",
 };
+
+/** A flight-ops export has separate departure/arrival station columns per
+ * leg — almost all of them real flights to somewhere else entirely, mixed in
+ * with a handful of ground/maintenance "pseudo-flights" that never actually
+ * leave the station (Dep === Arr). When one of these headers is present,
+ * parseImportFile keeps only the rows where the two match: that is exactly
+ * what "ground time" means, and it's what lets her upload a raw ops export
+ * (mostly revenue flights to international stations) without pre-filtering
+ * it herself first. */
+const ARRIVAL_STATION_HEADERS = new Set([
+  "actual arrival airport",
+  "arrival airport",
+  "arr airport",
+  "arr ap",
+  "到達站",
+  "抵達站",
+]);
+
+/** Matches a registration regardless of how the source file punctuates it —
+ * "B-58552", "B58552", "B 58552" all resolve to the same fleet aircraft. */
+function normalizeRegistration(reg: string): string {
+  return reg.replace(/[^a-z0-9]/gi, "").toUpperCase();
+}
 
 function normalizeHeader(raw: string) {
   return raw.trim().toLowerCase();
@@ -439,7 +555,13 @@ function parseCsv(text: string): string[][] {
 /** Parses an uploaded schedule file (.xlsx or .csv) into raw rows keyed by
  * our canonical field names, using a fairly forgiving set of header aliases
  * (機號/registration, 站別/station, 進站/arrival, 離站/departure, 備註/notes)
- * since real-world schedule exports rarely use the same column names twice. */
+ * since real-world schedule exports rarely use the same column names twice.
+ * Also understands a raw flight-ops export directly (Registration/Dep/STD/
+ * STA/Check Remark, plus an arrival-airport column) — when it sees a
+ * distinct arrival-station column it keeps only the rows where departure and
+ * arrival station match (a ground/maintenance event, not a real flight to
+ * somewhere else), so she can upload the export as-is without pre-filtering
+ * out the hundreds of ordinary revenue flights herself. */
 export async function parseImportFile(fileBuffer: Buffer, mimeType: string, fileName: string): Promise<ImportedRow[]> {
   const isCsv = mimeType === "text/csv" || fileName.toLowerCase().endsWith(".csv");
 
@@ -471,9 +593,20 @@ export async function parseImportFile(fileBuffer: Buffer, mimeType: string, file
     const key = normalizeHeader(cellToString(h));
     return HEADER_ALIASES[key] ?? null;
   });
+  // A distinct arrival-station column (separate from Dep/station) means this
+  // looks like a raw flight-ops export rather than an already-filtered
+  // ground-window sheet — see ARRIVAL_STATION_HEADERS.
+  const arrivalStationColumnIndex = headerRow.findIndex((h) => ARRIVAL_STATION_HEADERS.has(normalizeHeader(cellToString(h))));
 
-  return dataRows.map((row) => {
-    const parsed: ImportedRow = { aircraft_registration: "", station: null, arrival_at: null, departure_at: null, notes: null };
+  const parsedRows = dataRows.map((row) => {
+    const parsed: ImportedRow = {
+      aircraft_registration: "",
+      station: null,
+      arrival_at: null,
+      departure_at: null,
+      notes: null,
+      major_work_planned: null,
+    };
     columnMap.forEach((field, i) => {
       if (!field) return;
       const raw = row[i];
@@ -483,11 +616,28 @@ export async function parseImportFile(fileBuffer: Buffer, mimeType: string, file
         parsed.aircraft_registration = cellToString(raw).toUpperCase();
       } else if (field === "station") {
         parsed.station = cellToString(raw).toUpperCase() || null;
+      } else if (field === "major_work_planned") {
+        parsed.major_work_planned = cellToString(raw) || null;
       } else {
         parsed.notes = cellToString(raw) || null;
       }
     });
     return parsed;
+  });
+
+  if (arrivalStationColumnIndex === -1) return parsedRows;
+
+  // Keep only the rows where the aircraft never actually left the station
+  // (dep === arrival) — those are ground/maintenance events. Everything
+  // else is a real flight to somewhere else and gets silently dropped, so
+  // she can upload the raw ops export without pre-filtering it herself.
+  // (Note: `skipped` row numbers reported later count positions among these
+  // surviving rows, not original spreadsheet line numbers, since hundreds of
+  // real flights are routinely dropped right here before that stage runs.)
+  return parsedRows.filter((parsed, i) => {
+    const arrivalStation = cellToString(dataRows[i][arrivalStationColumnIndex]).toUpperCase();
+    if (!parsed.station || !arrivalStation) return true;
+    return parsed.station === arrivalStation;
   });
 }
 
@@ -499,14 +649,16 @@ export async function parseImportFile(fileBuffer: Buffer, mimeType: string, file
  */
 export async function importGroundWindows(supabase: DB, rows: ImportedRow[], currentUserId: string): Promise<ImportResult> {
   const fleet = await planningLookupsRepo.findAllFleet(supabase);
-  const fleetByReg = new Map(fleet.map((f) => [f.aircraft_registration.toUpperCase(), f]));
+  // Keyed by a punctuation-stripped registration so "B58552" (a common ops-
+  // export style) still matches fleet_master's "B-58552".
+  const fleetByReg = new Map(fleet.map((f) => [normalizeRegistration(f.aircraft_registration), f]));
 
   const toInsert: Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Insert"][] = [];
   const skipped: { row: number; reason: string }[] = [];
 
   rows.forEach((row, idx) => {
     const rowNumber = idx + 2; // +1 for header, +1 for 1-indexing
-    const aircraft = fleetByReg.get(row.aircraft_registration);
+    const aircraft = row.aircraft_registration ? fleetByReg.get(normalizeRegistration(row.aircraft_registration)) : undefined;
     if (!row.aircraft_registration) {
       skipped.push({ row: rowNumber, reason: "缺少機號" });
       return;
@@ -535,6 +687,7 @@ export async function importGroundWindows(supabase: DB, rows: ImportedRow[], cur
       arrival_at: row.arrival_at,
       departure_at: row.departure_at,
       notes: row.notes,
+      major_work_planned: row.major_work_planned,
       source: "import",
       created_by: currentUserId,
     });
