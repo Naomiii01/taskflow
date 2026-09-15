@@ -10,6 +10,7 @@ import {
   SUPERVISOR_TASK_STATUSES,
   TASK_PRIORITIES,
   WAITING_STATUSES,
+  WORK_SHIFTS,
 } from "@/lib/constants";
 
 // --- Fleet Master ------------------------------------------------------------
@@ -130,6 +131,8 @@ const planningInfoFields = {
   required_equipment: z.string().trim().max(200).nullable().optional(),
   required_authorization: z.string().trim().max(200).nullable().optional(),
   planning_status: z.enum(MAJOR_WORK_PLANNING_STATUSES as [string, ...string[]]).nullable().optional(),
+  // 早班／中班／大夜班——只在有計畫大工項目時才有意義。
+  shift: z.enum(WORK_SHIFTS as [string, ...string[]]).nullable().optional(),
   // Which currently-Todo tasks this window's major work covers — omit to
   // leave existing links untouched, pass an array (empty included) to
   // replace the full set of linked tasks for this window.
