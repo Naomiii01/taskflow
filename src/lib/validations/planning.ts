@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import {
+  AIRCRAFT_CURRENT_STATUSES,
   AIRCRAFT_TYPES,
   CROSS_DEPT_UNITS,
   FOLLOW_UP_ENTITY_TYPES,
+  MAJOR_WORK_PLANNING_STATUSES,
   STATIONS,
   SUPERVISOR_TASK_STATUSES,
   TASK_PRIORITIES,
@@ -118,6 +120,22 @@ export type RecurringTemplateValues = z.infer<typeof recurringTemplateSchema>;
 /** 一段「機號在某站的地面時間」——進站到下一次離站。Aircraft Planning Board
  * 的三個 Lite 維度（Availability / Ground Time / Overnight Opportunity）都是
  * 從這筆資料在畫面上即時算出來的，資料庫本身不存已經算好的欄位。 */
+// Planning Information — optional on every window, since most ground stays
+// have no major work attached at all.
+const planningInfoFields = {
+  current_status: z.enum(AIRCRAFT_CURRENT_STATUSES as [string, ...string[]]).nullable().optional(),
+  major_work_planned: z.string().trim().max(500).nullable().optional(),
+  estimated_mh: z.number().min(0).max(999.9).nullable().optional(),
+  required_skill: z.string().trim().max(200).nullable().optional(),
+  required_equipment: z.string().trim().max(200).nullable().optional(),
+  required_authorization: z.string().trim().max(200).nullable().optional(),
+  planning_status: z.enum(MAJOR_WORK_PLANNING_STATUSES as [string, ...string[]]).nullable().optional(),
+  // Which currently-Todo tasks this window's major work covers — omit to
+  // leave existing links untouched, pass an array (empty included) to
+  // replace the full set of linked tasks for this window.
+  linked_task_ids: z.array(z.string().uuid()).optional(),
+};
+
 export const groundWindowSchema = z
   .object({
     aircraft_registration: z.string().trim().min(1, "請選擇機號"),
@@ -125,6 +143,7 @@ export const groundWindowSchema = z
     arrival_at: z.string().min(1, "請輸入進站時間"),
     departure_at: z.string().min(1, "請輸入離站時間"),
     notes: z.string().trim().max(500).nullable().optional(),
+    ...planningInfoFields,
   })
   .refine((v) => new Date(v.departure_at).getTime() > new Date(v.arrival_at).getTime(), {
     message: "離站時間必須晚於進站時間",
@@ -138,8 +157,21 @@ export const groundWindowUpdateSchema = z.object({
   arrival_at: z.string().min(1).optional(),
   departure_at: z.string().min(1).optional(),
   notes: z.string().trim().max(500).nullable().optional(),
+  ...planningInfoFields,
 });
 export type GroundWindowUpdateValues = z.infer<typeof groundWindowUpdateSchema>;
+
+/** Capacity Warning 門檻——單一列的全域設定，先給預設值，畫面上可以自己調。 */
+export const planningBoardSettingsSchema = z
+  .object({
+    yellow_threshold: z.number().int().min(0).max(999),
+    red_threshold: z.number().int().min(0).max(999),
+  })
+  .refine((v) => v.red_threshold >= v.yellow_threshold, {
+    message: "紅色門檻必須大於或等於黃色門檻",
+    path: ["red_threshold"],
+  });
+export type PlanningBoardSettingsValues = z.infer<typeof planningBoardSettingsSchema>;
 
 export const groundWindowQuerySchema = z.object({
   start: z.string().min(1),
