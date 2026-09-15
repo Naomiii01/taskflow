@@ -54,12 +54,31 @@ function segmentFor(w: PlanningBoardWindow, dayIso: string): Segment {
   return "through";
 }
 
-function segmentLabel(w: PlanningBoardWindow, segment: Segment) {
-  const station = STATION_LABELS[w.station as keyof typeof STATION_LABELS] ?? w.station;
-  if (segment === "same") return `${station} ${hhmm(w.arrivalAt)}–${hhmm(w.departureAt)}`;
-  if (segment === "arrival") return `${station} ${hhmm(w.arrivalAt)}起 過夜`;
+function hasMajorWork(w: PlanningBoardWindow): boolean {
+  return !!(w.majorWorkPlanned && w.majorWorkPlanned.trim());
+}
+
+/** 格子裡的文字：有排大工就顯示「工作名稱-班別-MH」，沒有排大工就只顯示
+ * 幾點到幾點／過夜，不用特別寫站別——站別已經在機號那欄顯示了。 */
+function cellLabel(w: PlanningBoardWindow, segment: Segment) {
+  if (hasMajorWork(w)) {
+    const workName = w.majorWorkPlanned!.split("\n")[0].trim();
+    const parts = [workName, w.shift, w.estimatedMh != null ? `${w.estimatedMh}MH` : null];
+    return parts.filter(Boolean).join("-");
+  }
+  if (segment === "same") return `${hhmm(w.arrivalAt)}–${hhmm(w.departureAt)}`;
+  if (segment === "arrival") return `${hhmm(w.arrivalAt)} 起過夜`;
   if (segment === "departure") return `過夜 至${hhmm(w.departureAt)}`;
   return "過夜中";
+}
+
+/** 機號欄下方的「駐留區間」——只有選到的那一天剛好落在某段地面時間裡才會
+ * 顯示，同一天進出就只顯示時分，跨天就帶上月-日。 */
+function rangeLabel(w: PlanningBoardWindow) {
+  const arrivalDay = w.arrivalAt.slice(0, 10);
+  const departureDay = w.departureAt.slice(0, 10);
+  if (arrivalDay === departureDay) return `${hhmm(w.arrivalAt)}–${hhmm(w.departureAt)}`;
+  return `${arrivalDay.slice(5)} ${hhmm(w.arrivalAt)} → ${departureDay.slice(5)} ${hhmm(w.departureAt)}`;
 }
 
 type EditTarget =
@@ -123,11 +142,19 @@ export function AircraftPlanningBoard() {
   const [aircraftTypeFilter, setAircraftTypeFilter] = React.useState<string | undefined>(undefined);
   const [editTarget, setEditTarget] = React.useState<EditTarget | null>(null);
   const [importOpen, setImportOpen] = React.useState(false);
+  // 機號欄下方「目前駐留地點」要看哪一天——點日期欄的標題可以換；換頁
+  // （往前/往後一週）如果選到的那天不在畫面範圍裡，就退回顯示第一天。
+  const [selectedDayIso, setSelectedDayIso] = React.useState<string>(() => toIso(new Date()));
 
   const days = React.useMemo(() => eachDayOfInterval({ start: anchor, end: addDays(anchor, RANGE_DAYS - 1) }), [anchor]);
   const dayIsos = React.useMemo(() => days.map(toIso), [days]);
   const startIso = dayIsos[0];
   const endExclusiveIso = toIso(addDays(days[days.length - 1], 1));
+
+  React.useEffect(() => {
+    if (!dayIsos.includes(selectedDayIso)) setSelectedDayIso(dayIsos[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayIsos]);
 
   const { data: board, isLoading } = useAircraftPlanningBoard(startIso, endExclusiveIso);
 
@@ -148,6 +175,9 @@ export function AircraftPlanningBoard() {
     for (const d of board?.dailyCapacity ?? []) map.set(d.date, d);
     return map;
   }, [board]);
+
+  const windowForDay = (a: PlanningBoardAircraft, dayIso: string) =>
+    a.windows.find((w) => w.arrivalAt.slice(0, 10) <= dayIso && w.departureAt.slice(0, 10) >= dayIso);
 
   const openCreateFor = (a: PlanningBoardAircraft, dayIso: string) => {
     setEditTarget({ mode: "create", aircraftRegistration: a.aircraftRegistration, station: a.homeStation, dateIso: dayIso });
@@ -232,9 +262,12 @@ export function AircraftPlanningBoard() {
                     {days.map((d, i) => (
                       <th
                         key={dayIsos[i]}
+                        onClick={() => setSelectedDayIso(dayIsos[i])}
+                        title="點選這一天，左邊機號下方會顯示當天的駐留地點"
                         className={cn(
-                          "sticky top-0 z-10 min-w-[92px] border-b bg-card p-1.5 text-center font-medium",
-                          isDateToday(d) && "bg-primary/10"
+                          "sticky top-0 z-10 min-w-[92px] cursor-pointer select-none border-b bg-card p-1.5 text-center font-medium",
+                          isDateToday(d) && "bg-primary/10",
+                          dayIsos[i] === selectedDayIso && "ring-2 ring-inset ring-primary"
                         )}
                       >
                         <div>{WEEKDAY_LABELS[(d.getDay() + 6) % 7]}</div>
@@ -299,11 +332,19 @@ export function AircraftPlanningBoard() {
                       })}
                     </tr>
                   ))}
-                  {aircraft.map((a) => (
+                  {aircraft.map((a) => {
+                    const currentWindow = windowForDay(a, selectedDayIso);
+                    const currentStationLabel = currentWindow
+                      ? STATION_LABELS[currentWindow.station as keyof typeof STATION_LABELS] ?? currentWindow.station
+                      : STATION_LABELS[a.homeStation as keyof typeof STATION_LABELS] ?? a.homeStation;
+                    return (
                     <tr key={a.aircraftRegistration} className="group">
                       <td className="sticky left-0 z-10 border-b border-r bg-card p-2 align-top">
                         <div className="font-medium">{a.aircraftRegistration}</div>
-                        <div className="text-[10px] text-muted-foreground">{a.aircraftType} · {STATION_LABELS[a.homeStation as keyof typeof STATION_LABELS] ?? a.homeStation}</div>
+                        <div className="text-[10px] text-muted-foreground">{a.aircraftType} · {currentStationLabel}</div>
+                        {currentWindow && (
+                          <div className="text-[9px] text-muted-foreground/70">{rangeLabel(currentWindow)}</div>
+                        )}
                       </td>
                       {dayIsos.map((dayIso) => {
                         const windows = a.windows.filter((w) => w.arrivalAt.slice(0, 10) <= dayIso && w.departureAt.slice(0, 10) >= dayIso);
@@ -324,7 +365,7 @@ export function AircraftPlanningBoard() {
                                       overnight ? "bg-success/15 text-foreground" : "bg-muted/50 text-foreground"
                                     )}
                                   >
-                                    {segmentLabel(w, segment)}
+                                    {cellLabel(w, segment)}
                                   </button>
                                 );
                               })}
@@ -340,7 +381,8 @@ export function AircraftPlanningBoard() {
                         );
                       })}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
