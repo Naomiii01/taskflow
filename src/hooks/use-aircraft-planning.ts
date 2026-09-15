@@ -21,6 +21,7 @@ export type PlanningBoardWindow = {
   requiredEquipment: string | null;
   requiredAuthorization: string | null;
   planningStatus: string | null;
+  shift: string | null;
 };
 
 export type PlanningBoardAircraft = {
