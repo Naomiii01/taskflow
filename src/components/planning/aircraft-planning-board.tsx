@@ -70,7 +70,10 @@ function cellLabel(w: PlanningBoardWindow, segment: Segment) {
     const parts = [workName, w.shift, w.estimatedMh != null ? `${w.estimatedMh}MH` : null];
     return parts.filter(Boolean).join("-");
   }
-  if (segment === "same") return `${hhmm(w.arrivalAt)}–${hhmm(w.departureAt)}`;
+  if (segment === "same") {
+    const range = `${hhmm(w.arrivalAt)}–${hhmm(w.departureAt)}`;
+    return w.isDayStop ? `${range} 長地停` : range;
+  }
   if (segment === "arrival") return `${hhmm(w.arrivalAt)} 起過夜`;
   if (segment === "departure") return `過夜 至${hhmm(w.departureAt)}`;
   return "過夜中";
@@ -421,6 +424,10 @@ export function AircraftPlanningBoard() {
                                 const segment = segmentFor(w, dayIso);
                                 const overnight = segment !== "same";
                                 const work = hasMajorWork(w);
+                                // 同日長地停（A359/A351 跨夜航班回站到當天傍晚才又出門，中間
+                                // 停很久）也是計畫維修的好窗口，用第三種顏色（藍綠）跟過夜
+                                // （綠）、工作（琥珀）分開，才不會被誤認成普通同日轉場。
+                                const dayStop = !overnight && !work && w.isDayStop;
                                 // 已排定的計畫工作跟純過夜地停刻意用不同顏色——工作用琥珀色，
                                 // 過夜用綠色，兩者可能同時疊在同一格裡（各是獨立的一列），顏色
                                 // 不同才分得清楚哪個是工作、哪個只是過夜。
@@ -429,14 +436,24 @@ export function AircraftPlanningBoard() {
                                     key={w.id}
                                     type="button"
                                     onClick={() => openEditFor(a, w)}
-                                    style={{ borderLeftColor: work ? "var(--warning)" : overnight ? "var(--status-good)" : "var(--primary)" }}
+                                    style={{
+                                      borderLeftColor: work
+                                        ? "var(--warning)"
+                                        : overnight
+                                          ? "var(--status-good)"
+                                          : dayStop
+                                            ? "var(--day-stop)"
+                                            : "var(--primary)",
+                                    }}
                                     className={cn(
                                       "rounded-md border-l-2 px-1.5 py-1 text-left leading-tight",
                                       work
                                         ? "bg-warning/20 text-foreground"
                                         : overnight
                                           ? "bg-success/15 text-foreground"
-                                          : "bg-muted/50 text-foreground"
+                                          : dayStop
+                                            ? "bg-day-stop/15 text-foreground"
+                                            : "bg-muted/50 text-foreground"
                                     )}
                                   >
                                     {cellLabel(w, segment)}
