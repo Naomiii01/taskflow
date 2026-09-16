@@ -919,6 +919,36 @@ export interface Database {
         Update: Partial<Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Insert"]>;
         Relationships: [];
       };
+      // 航機長期駐留場站排程（駐廠輪替表），跟 aircraft_ground_windows 分開儲存、
+      // 疊加顯示 —— 見 supabase/migrations/20260916034000_taskflow_aircraft_residency_windows.sql
+      aircraft_residency_windows: {
+        Row: {
+          id: string;
+          aircraft_registration: string;
+          station: Station;
+          start_date: string;
+          end_date: string;
+          source: GroundWindowSource;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          aircraft_registration: string;
+          station: Station;
+          start_date: string;
+          end_date: string;
+          source?: GroundWindowSource;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["taskflow"]["Tables"]["aircraft_residency_windows"]["Insert"]>;
+        Relationships: [];
+      };
       planning_board_settings: {
         Row: {
           id: string;
