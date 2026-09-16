@@ -395,7 +395,7 @@ export function AircraftPlanningBoard() {
                         <div className="font-medium">{a.aircraftRegistration}</div>
                         <div className="text-[10px] text-muted-foreground">{a.aircraftType} · {currentStationLabel}</div>
                         {currentResidency ? (
-                          <div className="text-[9px] text-residency-foreground">
+                          <div className="text-[9px] font-medium text-residency">
                             駐留 {currentResidency.startDate.slice(5)} – {currentResidency.endDate.slice(5)}
                           </div>
                         ) : (
@@ -409,10 +409,10 @@ export function AircraftPlanningBoard() {
                           <td
                             key={dayIso}
                             title={residency ? `駐留${STATION_LABELS[residency.station as keyof typeof STATION_LABELS] ?? residency.station}：${residency.startDate.slice(5)} – ${residency.endDate.slice(5)}` : undefined}
-                            className={cn("border-b border-l p-1 align-top", residency && "bg-residency/15")}
+                            className={cn("border-b border-l p-1 align-top", residency && "bg-residency/30")}
                           >
                             {residency && dayIso === residency.startDate && (
-                              <div className="mb-0.5 truncate rounded bg-residency/40 px-1 py-0.5 text-[9px] font-medium text-residency-foreground">
+                              <div className="mb-0.5 truncate rounded bg-residency px-1 py-0.5 text-[9px] font-semibold text-residency-foreground">
                                 駐{STATION_LABELS[residency.station as keyof typeof STATION_LABELS] ?? residency.station}起
                               </div>
                             )}
