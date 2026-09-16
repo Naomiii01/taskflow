@@ -272,7 +272,15 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
   // occupies, per dayKeysTouched — capacity is consumed on every day a big
   // job is in progress, not only the day it starts). Ground hours use the
   // actual overlap with that specific day, not the window's full length.
+  //
+  // Aircraft counts are a HEADCOUNT — "how many distinct aircraft touched
+  // this station today" — not a count of windows. One aircraft can rack up
+  // several short ground windows at the same station on the same day (e.g.
+  // TPE↔somewhere↔TPE turnarounds between legs), so counting windows instead
+  // of distinct registrations wildly overcounts (55 "aircraft" at TPE on a
+  // 37-tail fleet). A Set per day per station keeps this an honest headcount.
   const dailyMap = new Map<string, DailyCapacity>();
+  const dailyStationAircraft = new Map<string, { RMQ: Set<string>; KHH: Set<string>; TPE: Set<string> }>();
   for (const w of windows) {
     const boardWindow = toBoardWindow(w);
     for (const day of dayKeysTouched(boardWindow, start, end)) {
@@ -291,13 +299,18 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
         };
         dailyMap.set(day, bucket);
       }
+      let stationSets = dailyStationAircraft.get(day);
+      if (!stationSets) {
+        stationSets = { RMQ: new Set(), KHH: new Set(), TPE: new Set() };
+        dailyStationAircraft.set(day, stationSets);
+      }
       if (hasMajorWork(boardWindow)) {
         bucket.majorWorkCount += 1;
         bucket.mhTotal += boardWindow.estimatedMh ?? 0;
       }
-      if (w.station === "RMQ") bucket.rmqAircraftCount += 1;
-      if (w.station === "KHH") bucket.khhAircraftCount += 1;
-      if (w.station === "TPE") bucket.tpeAircraftCount += 1;
+      if (w.station === "RMQ") stationSets.RMQ.add(w.aircraft_registration);
+      if (w.station === "KHH") stationSets.KHH.add(w.aircraft_registration);
+      if (w.station === "TPE") stationSets.TPE.add(w.aircraft_registration);
 
       const dayStartIso = `${day}T00:00:00.000Z`;
       const dayEndIso = `${addDaysToKey(day, 1)}T00:00:00.000Z`;
@@ -308,7 +321,18 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
     }
   }
   const dailyCapacity = Array.from(dailyMap.values())
-    .map((d) => ({ ...d, rmqGroundHours: round1(d.rmqGroundHours), khhGroundHours: round1(d.khhGroundHours), tpeGroundHours: round1(d.tpeGroundHours) }))
+    .map((d) => {
+      const stationSets = dailyStationAircraft.get(d.date);
+      return {
+        ...d,
+        rmqAircraftCount: stationSets?.RMQ.size ?? 0,
+        khhAircraftCount: stationSets?.KHH.size ?? 0,
+        tpeAircraftCount: stationSets?.TPE.size ?? 0,
+        rmqGroundHours: round1(d.rmqGroundHours),
+        khhGroundHours: round1(d.khhGroundHours),
+        tpeGroundHours: round1(d.tpeGroundHours),
+      };
+    })
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 
   // Dashboard Summary.
