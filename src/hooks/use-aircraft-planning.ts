@@ -12,6 +12,7 @@ export type PlanningBoardWindow = {
   departureAt: string;
   groundTimeMinutes: number;
   isOvernight: boolean;
+  isDayStop: boolean;
   notes: string | null;
   // Planning Information — null when this ground stay has no major work planned.
   currentStatus: string | null;
