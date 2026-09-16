@@ -190,6 +190,12 @@ export function AircraftPlanningBoard() {
   const windowForDay = (a: PlanningBoardAircraft, dayIso: string) =>
     a.windows.find((w) => w.arrivalAt.slice(0, 10) <= dayIso && w.departureAt.slice(0, 10) >= dayIso);
 
+  // 駐廠輪替表（例如駐留RMQ）——跟上面的每日地停格子是分開來源、疊加顯示的
+  // 兩種資訊，這裡不取代 windowForDay。end_date 是半開區間（下一輪開始那
+  // 天），所以用 < 不是 <=。
+  const residencyWindowForDay = (a: PlanningBoardAircraft, dayIso: string) =>
+    a.residencyWindows.find((r) => r.startDate <= dayIso && dayIso < r.endDate);
+
   const openCreateFor = (a: PlanningBoardAircraft, dayIso: string) => {
     setEditTarget({ mode: "create", aircraftRegistration: a.aircraftRegistration, station: a.homeStation, dateIso: dayIso });
   };
@@ -211,7 +217,7 @@ export function AircraftPlanningBoard() {
           </Button>
           <Button
             size="sm"
-            onClick={() => openCreateFor({ aircraftRegistration: "", aircraftType: "", homeStation: "TPE", windows: [] }, startIso)}
+            onClick={() => openCreateFor({ aircraftRegistration: "", aircraftType: "", homeStation: "TPE", windows: [], residencyWindows: [] }, startIso)}
             disabled={aircraftOptions.length === 0}
           >
             <Plus className="size-3.5" /> 新增地面時間
@@ -374,22 +380,42 @@ export function AircraftPlanningBoard() {
                   ))}
                   {aircraft.map((a) => {
                     const currentWindow = windowForDay(a, selectedDayIso);
-                    const currentStationLabel = currentWindow
-                      ? STATION_LABELS[currentWindow.station as keyof typeof STATION_LABELS] ?? currentWindow.station
-                      : STATION_LABELS[a.homeStation as keyof typeof STATION_LABELS] ?? a.homeStation;
+                    const currentResidency = residencyWindowForDay(a, selectedDayIso);
+                    // 駐廠輪替表比從班表算出來的地停格子更權威（是排班單位另外
+                    // 排定的），選到的那天如果剛好在駐留區間內，機號下方優先顯
+                    // 示駐留場站，而不是當天班表算出來的場站。
+                    const currentStationLabel = currentResidency
+                      ? STATION_LABELS[currentResidency.station as keyof typeof STATION_LABELS] ?? currentResidency.station
+                      : currentWindow
+                        ? STATION_LABELS[currentWindow.station as keyof typeof STATION_LABELS] ?? currentWindow.station
+                        : STATION_LABELS[a.homeStation as keyof typeof STATION_LABELS] ?? a.homeStation;
                     return (
                     <tr key={a.aircraftRegistration} className="group">
                       <td className="sticky left-0 z-10 border-b border-r bg-card p-2 align-top">
                         <div className="font-medium">{a.aircraftRegistration}</div>
                         <div className="text-[10px] text-muted-foreground">{a.aircraftType} · {currentStationLabel}</div>
-                        {currentWindow && (
-                          <div className="text-[9px] text-muted-foreground/70">{rangeLabel(currentWindow)}</div>
+                        {currentResidency ? (
+                          <div className="text-[9px] text-residency-foreground">
+                            駐留 {currentResidency.startDate.slice(5)} – {currentResidency.endDate.slice(5)}
+                          </div>
+                        ) : (
+                          currentWindow && <div className="text-[9px] text-muted-foreground/70">{rangeLabel(currentWindow)}</div>
                         )}
                       </td>
                       {dayIsos.map((dayIso) => {
                         const windows = a.windows.filter((w) => w.arrivalAt.slice(0, 10) <= dayIso && w.departureAt.slice(0, 10) >= dayIso);
+                        const residency = residencyWindowForDay(a, dayIso);
                         return (
-                          <td key={dayIso} className="border-b border-l p-1 align-top">
+                          <td
+                            key={dayIso}
+                            title={residency ? `駐留${STATION_LABELS[residency.station as keyof typeof STATION_LABELS] ?? residency.station}：${residency.startDate.slice(5)} – ${residency.endDate.slice(5)}` : undefined}
+                            className={cn("border-b border-l p-1 align-top", residency && "bg-residency/15")}
+                          >
+                            {residency && dayIso === residency.startDate && (
+                              <div className="mb-0.5 truncate rounded bg-residency/40 px-1 py-0.5 text-[9px] font-medium text-residency-foreground">
+                                駐{STATION_LABELS[residency.station as keyof typeof STATION_LABELS] ?? residency.station}起
+                              </div>
+                            )}
                             <div className="flex min-h-[48px] flex-col gap-1">
                               {windows.map((w) => {
                                 const segment = segmentFor(w, dayIso);
