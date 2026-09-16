@@ -62,9 +62,10 @@
   --cal-rose-foreground: #6b4551;
 
   /* Aircraft Planning Board — 駐留RMQ長天期輪替區間的疊加標示色，跟過夜(綠)/
-     容量警示(黃紅)/一般格子都不同色系，才不會混淆。 */
-  --residency: #c3b2d6;
-  --residency-foreground: #3f3355;
+     容量警示(黃紅)/一般格子都不同色系，才不會混淆。飽和度故意比其他 token
+     高一點，淡色調在格子裡不容易一眼認出。 */
+  --residency: #8b6bb3;
+  --residency-foreground: #f8f4fc;
 
   --border: #e3ddd0;
   --input: #e3ddd0;
@@ -129,8 +130,8 @@
   --cal-rose: #4a3339;
   --cal-rose-foreground: #e8cdd5;
 
-  --residency: #5c4d73;
-  --residency-foreground: #e6dcf0;
+  --residency: #a688cf;
+  --residency-foreground: #221a30;
 
   --border: rgba(236, 230, 218, 0.1);
   --input: rgba(236, 230, 218, 0.14);
