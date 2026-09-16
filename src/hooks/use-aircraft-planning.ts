@@ -24,11 +24,20 @@ export type PlanningBoardWindow = {
   shift: string | null;
 };
 
+export type PlanningBoardResidencyWindow = {
+  id: string;
+  station: string;
+  startDate: string;
+  endDate: string;
+  notes: string | null;
+};
+
 export type PlanningBoardAircraft = {
   aircraftRegistration: string;
   aircraftType: string;
   homeStation: string;
   windows: PlanningBoardWindow[];
+  residencyWindows: PlanningBoardResidencyWindow[];
 };
 
 export type DailyCapacity = {
