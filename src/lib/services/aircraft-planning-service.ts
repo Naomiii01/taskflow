@@ -553,15 +553,29 @@ function normalizeHeader(raw: string) {
   return raw.trim().toLowerCase();
 }
 
+/** OPS-export STD/STA times are Zulu (UTC) — standard aviation-ops
+ * convention — but every ground window in this feature is otherwise entered
+ * and displayed as a plain, never-timezone-converted wall-clock value (see
+ * the manual entry dialog's isoToLocalInput/localInputToIso, and dateKeyOf
+ * below). So a parsed OPS time is shifted here, once, from Zulu to Taipei
+ * local (UTC+8, no DST) before it enters that "plain digits" convention —
+ * everything downstream (overnight/turnaround day-boundary comparisons,
+ * on-screen display) then works in Taipei wall-clock terms without knowing
+ * anything about timezones. */
+function zuluToTaipeiLocal(zuluIso: string): string {
+  return new Date(new Date(zuluIso).getTime() + 8 * 60 * 60 * 1000).toISOString();
+}
+
 /** Accepts an Excel serial date, a JS Date (exceljs already returns UTC-based
  * Date objects for date-formatted cells), or a "YYYY-MM-DD HH:mm"-shaped
  * string — and always returns a plain (no-timezone-shift) ISO string, same
- * convention as the manual entry dialog's datetime-local input. */
+ * convention as the manual entry dialog's datetime-local input, after
+ * shifting the source Zulu time to Taipei local. */
 function parseDateTimeCell(raw: unknown): string | null {
-  if (raw instanceof Date) return raw.toISOString();
+  if (raw instanceof Date) return zuluToTaipeiLocal(raw.toISOString());
   if (typeof raw === "number") {
     const ms = Math.round((raw - 25569) * 86400 * 1000); // Excel serial → epoch
-    return new Date(ms).toISOString();
+    return zuluToTaipeiLocal(new Date(ms).toISOString());
   }
   if (typeof raw === "string") {
     const s = raw.trim();
@@ -569,7 +583,8 @@ function parseDateTimeCell(raw: unknown): string | null {
     const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{2})/);
     if (!m) return null;
     const [, y, mo, d, h, mi] = m;
-    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi}:00.000Z`;
+    const rawIso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi}:00.000Z`;
+    return zuluToTaipeiLocal(rawIso);
   }
   return null;
 }
