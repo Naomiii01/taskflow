@@ -24,7 +24,7 @@ import {
   type PlanningBoardWindow,
 } from "@/hooks/use-aircraft-planning";
 import { toIso, WEEKDAY_LABELS } from "@/lib/calendar-date-utils";
-import { AIRCRAFT_TYPES, STATION_LABELS } from "@/lib/constants";
+import { AIRCRAFT_TYPES, STATIONS, STATION_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "day" | "week" | "month";
@@ -145,6 +145,8 @@ export function AircraftPlanningBoard() {
   const [anchor, setAnchor] = React.useState(() => new Date());
   const [viewMode, setViewMode] = React.useState<ViewMode>("week");
   const [aircraftTypeFilter, setAircraftTypeFilter] = React.useState<string | undefined>(undefined);
+  // 依機隊主檔登記的固定基地場站篩選（homeStation）——不管當天實際停在哪裡。
+  const [stationFilter, setStationFilter] = React.useState<string | undefined>(undefined);
   const [editTarget, setEditTarget] = React.useState<EditTarget | null>(null);
   const [importOpen, setImportOpen] = React.useState(false);
   // 機號欄下方「目前駐留地點」要看哪一天——點日期欄的標題可以換；換頁
@@ -166,9 +168,11 @@ export function AircraftPlanningBoard() {
   const { data: board, isLoading } = useAircraftPlanningBoard(startIso, endExclusiveIso);
 
   const aircraft = React.useMemo(() => {
-    const list = board?.aircraft ?? [];
-    return aircraftTypeFilter ? list.filter((a) => a.aircraftType === aircraftTypeFilter) : list;
-  }, [board, aircraftTypeFilter]);
+    let list = board?.aircraft ?? [];
+    if (aircraftTypeFilter) list = list.filter((a) => a.aircraftType === aircraftTypeFilter);
+    if (stationFilter) list = list.filter((a) => a.homeStation === stationFilter);
+    return list;
+  }, [board, aircraftTypeFilter, stationFilter]);
 
   const aircraftOptions: AircraftOption[] = React.useMemo(
     () => (board?.aircraft ?? []).map((a) => ({ registration: a.aircraftRegistration, aircraftType: a.aircraftType, homeStation: a.homeStation })),
@@ -268,6 +272,16 @@ export function AircraftPlanningBoard() {
                   <SelectItem value={ALL}>全部機型</SelectItem>
                   {AIRCRAFT_TYPES.map((t) => (
                     <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={stationFilter ?? ALL} onValueChange={(v) => setStationFilter(v === ALL ? undefined : v)}>
+                <SelectTrigger className="w-[130px]"><SelectValue placeholder="場站" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>全部場站</SelectItem>
+                  {STATIONS.map((s) => (
+                    <SelectItem key={s} value={s}>{STATION_LABELS[s]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
