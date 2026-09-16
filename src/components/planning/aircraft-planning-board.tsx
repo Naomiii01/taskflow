@@ -27,7 +27,11 @@ import { toIso, WEEKDAY_LABELS } from "@/lib/calendar-date-utils";
 import { AIRCRAFT_TYPES, STATION_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-const RANGE_DAYS = 14;
+type ViewMode = "day" | "week" | "month";
+// 天/週/月分別對應看板一次顯示幾天——天用來放大看近期細節，月用來拉長看整體
+// 排程，中間用週折衷；月視圖格子較窄，用天/週切換就能把格子放大。
+const VIEW_RANGE_DAYS: Record<ViewMode, number> = { day: 3, week: 7, month: 30 };
+const VIEW_MODE_LABELS: Record<ViewMode, string> = { day: "天", week: "週", month: "月" };
 const ALL = "__all__";
 
 function hhmm(iso: string) {
@@ -139,14 +143,17 @@ function CapacitySettingsPopover() {
  */
 export function AircraftPlanningBoard() {
   const [anchor, setAnchor] = React.useState(() => new Date());
+  const [viewMode, setViewMode] = React.useState<ViewMode>("week");
   const [aircraftTypeFilter, setAircraftTypeFilter] = React.useState<string | undefined>(undefined);
   const [editTarget, setEditTarget] = React.useState<EditTarget | null>(null);
   const [importOpen, setImportOpen] = React.useState(false);
   // 機號欄下方「目前駐留地點」要看哪一天——點日期欄的標題可以換；換頁
-  // （往前/往後一週）如果選到的那天不在畫面範圍裡，就退回顯示第一天。
+  // （往前/往後一頁，頁的長度依天/週/月而定）如果選到的那天不在畫面範圍
+  // 裡，就退回顯示第一天。
   const [selectedDayIso, setSelectedDayIso] = React.useState<string>(() => toIso(new Date()));
 
-  const days = React.useMemo(() => eachDayOfInterval({ start: anchor, end: addDays(anchor, RANGE_DAYS - 1) }), [anchor]);
+  const rangeDays = VIEW_RANGE_DAYS[viewMode];
+  const days = React.useMemo(() => eachDayOfInterval({ start: anchor, end: addDays(anchor, rangeDays - 1) }), [anchor, rangeDays]);
   const dayIsos = React.useMemo(() => days.map(toIso), [days]);
   const startIso = dayIsos[0];
   const endExclusiveIso = toIso(addDays(days[days.length - 1], 1));
@@ -228,25 +235,43 @@ export function AircraftPlanningBoard() {
         <CardContent className="flex flex-col gap-4 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-1.5">
-              <Button variant="outline" size="icon" className="size-8" onClick={() => setAnchor((a) => addDays(a, -7))}>
+              <Button variant="outline" size="icon" className="size-8" onClick={() => setAnchor((a) => addDays(a, -rangeDays))}>
                 <ChevronLeft className="size-4" />
               </Button>
               <Button variant="outline" size="sm" onClick={() => setAnchor(new Date())}>今天</Button>
-              <Button variant="outline" size="icon" className="size-8" onClick={() => setAnchor((a) => addDays(a, 7))}>
+              <Button variant="outline" size="icon" className="size-8" onClick={() => setAnchor((a) => addDays(a, rangeDays))}>
                 <ChevronRight className="size-4" />
               </Button>
               <span className="ml-1 text-sm font-medium">{periodLabel}</span>
             </div>
 
-            <Select value={aircraftTypeFilter ?? ALL} onValueChange={(v) => setAircraftTypeFilter(v === ALL ? undefined : v)}>
-              <SelectTrigger className="w-[130px]"><SelectValue placeholder="機型" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>全部機型</SelectItem>
-                {AIRCRAFT_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-md border p-0.5">
+                {(Object.keys(VIEW_MODE_LABELS) as ViewMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setViewMode(mode)}
+                    className={cn(
+                      "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                      mode === viewMode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    {VIEW_MODE_LABELS[mode]}
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+
+              <Select value={aircraftTypeFilter ?? ALL} onValueChange={(v) => setAircraftTypeFilter(v === ALL ? undefined : v)}>
+                <SelectTrigger className="w-[130px]"><SelectValue placeholder="機型" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>全部機型</SelectItem>
+                  {AIRCRAFT_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {isLoading && !board ? (
@@ -265,7 +290,8 @@ export function AircraftPlanningBoard() {
                         onClick={() => setSelectedDayIso(dayIsos[i])}
                         title="點選這一天，左邊機號下方會顯示當天的駐留地點"
                         className={cn(
-                          "sticky top-0 z-10 min-w-[92px] cursor-pointer select-none border-b bg-card p-1.5 text-center font-medium",
+                          "sticky top-0 z-10 cursor-pointer select-none border-b bg-card p-1.5 text-center font-medium",
+                          viewMode === "day" ? "min-w-[160px]" : viewMode === "week" ? "min-w-[120px]" : "min-w-[92px]",
                           isDateToday(d) && "bg-primary/10",
                           dayIsos[i] === selectedDayIso && "ring-2 ring-inset ring-primary"
                         )}
