@@ -18,6 +18,20 @@ export async function findAllFleet(supabase: DB, aircraftTypes?: string[]) {
   return data ?? [];
 }
 
+/** A single aircraft's type by registration — used where only one row's
+ * fleet context is needed (e.g. re-deriving a ground window's day-stop flag
+ * right after a create/update) and pulling the whole fleet list would be
+ * overkill. */
+export async function findFleetAircraftByRegistration(supabase: DB, registration: string) {
+  const { data, error } = await supabase
+    .from("fleet_master")
+    .select("aircraft_type")
+    .eq("aircraft_registration", registration)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function createFleetAircraft(
   supabase: DB,
   values: Database["taskflow"]["Tables"]["fleet_master"]["Insert"]
