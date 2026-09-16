@@ -420,15 +420,23 @@ export function AircraftPlanningBoard() {
                               {windows.map((w) => {
                                 const segment = segmentFor(w, dayIso);
                                 const overnight = segment !== "same";
+                                const work = hasMajorWork(w);
+                                // 已排定的計畫工作跟純過夜地停刻意用不同顏色——工作用琥珀色，
+                                // 過夜用綠色，兩者可能同時疊在同一格裡（各是獨立的一列），顏色
+                                // 不同才分得清楚哪個是工作、哪個只是過夜。
                                 return (
                                   <button
                                     key={w.id}
                                     type="button"
                                     onClick={() => openEditFor(a, w)}
-                                    style={{ borderLeftColor: overnight ? "var(--status-good)" : "var(--primary)" }}
+                                    style={{ borderLeftColor: work ? "var(--warning)" : overnight ? "var(--status-good)" : "var(--primary)" }}
                                     className={cn(
                                       "rounded-md border-l-2 px-1.5 py-1 text-left leading-tight",
-                                      overnight ? "bg-success/15 text-foreground" : "bg-muted/50 text-foreground"
+                                      work
+                                        ? "bg-warning/20 text-foreground"
+                                        : overnight
+                                          ? "bg-success/15 text-foreground"
+                                          : "bg-muted/50 text-foreground"
                                     )}
                                   >
                                     {cellLabel(w, segment)}
