@@ -67,6 +67,12 @@
   --residency: #8b6bb3;
   --residency-foreground: #f8f4fc;
 
+  /* Aircraft Planning Board — 日間長地停（A359/A351 跨夜航班回站後、當天傍晚
+     才又出門，中間長時間停留）疊加標示色。跟過夜(綠)/工作(黃)/駐留(紫)都不
+     同色系，用低飽和藍綠色（Dusty Blue 的近親但明顯可分）避免混淆。 */
+  --day-stop: #5b8a94;
+  --day-stop-foreground: #f8fbfb;
+
   --border: #e3ddd0;
   --input: #e3ddd0;
   --ring: #7c93a8;
@@ -133,6 +139,9 @@
   --residency: #a688cf;
   --residency-foreground: #221a30;
 
+  --day-stop: #7aacb6;
+  --day-stop-foreground: #17262a;
+
   --border: rgba(236, 230, 218, 0.1);
   --input: rgba(236, 230, 218, 0.14);
   --ring: #93acc0;
@@ -184,6 +193,8 @@
   --color-cal-rose-foreground: var(--cal-rose-foreground);
   --color-residency: var(--residency);
   --color-residency-foreground: var(--residency-foreground);
+  --color-day-stop: var(--day-stop);
+  --color-day-stop-foreground: var(--day-stop-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
