@@ -29,6 +29,11 @@ export type PlanningBoardWindow = {
   groundTimeMinutes: number;
   /** Spans at least one local midnight — a maintenance-shift opportunity. */
   isOvernight: boolean;
+  /** A same-calendar-day ground stay that's still long enough to be a real
+   * maintenance-shift opportunity — the long-haul fleet's pattern of landing
+   * early morning and not leaving again until evening. Never true together
+   * with isOvernight (see toBoardWindow). */
+  isDayStop: boolean;
   notes: string | null;
   // Planning Information — all null when no major work is planned for this stay.
   currentStatus: AircraftCurrentStatus | null;
@@ -124,17 +129,37 @@ function dateKeyOf(iso: string) {
   return iso.slice(0, 10);
 }
 
-function toBoardWindow(row: Awaited<ReturnType<typeof groundWindowsRepo.findWindowsOverlapping>>[number]): PlanningBoardWindow {
+/** Fleet this "day stop" rule applies to — the only aircraft whose schedule
+ * can produce a long same-day ground stay in the first place (a US/Europe
+ * rotation landing early morning and not leaving again until evening). The
+ * rest of the fleet's same-day gaps are ordinary turnarounds, never a
+ * maintenance opportunity worth flagging. */
+const LONG_HAUL_TYPES: ReadonlySet<AircraftType> = new Set(["A359", "A351"]);
+/** How long a same-day ground stay has to be before it counts as a "日間長
+ * 地停" (day stop) rather than an ordinary turnaround between two legs. */
+const DAY_STOP_MIN_MINUTES = 6 * 60;
+
+function toBoardWindow(
+  row: Awaited<ReturnType<typeof groundWindowsRepo.findWindowsOverlapping>>[number],
+  aircraftType?: AircraftType | null
+): PlanningBoardWindow {
   const groundTimeMinutes = Math.round(
     (new Date(row.departure_at).getTime() - new Date(row.arrival_at).getTime()) / 60000
   );
+  const isOvernight = dateKeyOf(row.arrival_at) !== dateKeyOf(row.departure_at);
+  const isDayStop =
+    !isOvernight &&
+    !!aircraftType &&
+    LONG_HAUL_TYPES.has(aircraftType) &&
+    groundTimeMinutes >= DAY_STOP_MIN_MINUTES;
   return {
     id: row.id,
     station: row.station,
     arrivalAt: row.arrival_at,
     departureAt: row.departure_at,
     groundTimeMinutes,
-    isOvernight: dateKeyOf(row.arrival_at) !== dateKeyOf(row.departure_at),
+    isOvernight,
+    isDayStop,
     notes: row.notes,
     currentStatus: row.current_status,
     majorWorkPlanned: row.major_work_planned,
@@ -248,10 +273,11 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
   const visibleWindows = windows.filter((w) => activeRegistrations.has(w.aircraft_registration));
   const visibleTodayWindows = todayWindows.filter((w) => activeRegistrations.has(w.aircraft_registration));
   const visibleWeekWindows = weekWindows.filter((w) => activeRegistrations.has(w.aircraft_registration));
+  const aircraftTypeByReg = new Map(fleet.map((f) => [f.aircraft_registration, f.aircraft_type]));
 
   const windowsByAircraft = new Map<string, PlanningBoardWindow[]>();
   for (const w of visibleWindows) {
-    const boardWindow = toBoardWindow(w);
+    const boardWindow = toBoardWindow(w, aircraftTypeByReg.get(w.aircraft_registration));
     const list = windowsByAircraft.get(w.aircraft_registration);
     if (list) list.push(boardWindow);
     else windowsByAircraft.set(w.aircraft_registration, [boardWindow]);
@@ -291,7 +317,7 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
   const dailyMap = new Map<string, DailyCapacity>();
   const dailyStationAircraft = new Map<string, { RMQ: Set<string>; KHH: Set<string>; TPE: Set<string> }>();
   for (const w of visibleWindows) {
-    const boardWindow = toBoardWindow(w);
+    const boardWindow = toBoardWindow(w, aircraftTypeByReg.get(w.aircraft_registration));
     for (const day of dayKeysTouched(boardWindow, start, end)) {
       let bucket = dailyMap.get(day);
       if (!bucket) {
@@ -345,8 +371,11 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 
   // Dashboard Summary.
-  const todayEntries = visibleTodayWindows.map((w) => ({ reg: w.aircraft_registration, bw: toBoardWindow(w) }));
-  const weekEntries = visibleWeekWindows.map((w) => ({ bw: toBoardWindow(w) }));
+  const todayEntries = visibleTodayWindows.map((w) => ({
+    reg: w.aircraft_registration,
+    bw: toBoardWindow(w, aircraftTypeByReg.get(w.aircraft_registration)),
+  }));
+  const weekEntries = visibleWeekWindows.map((w) => ({ bw: toBoardWindow(w, aircraftTypeByReg.get(w.aircraft_registration)) }));
   const todayMajorWorkCount = todayEntries.filter((e) => hasMajorWork(e.bw)).length;
   const weekMajorWorkCount = weekEntries.filter((e) => hasMajorWork(e.bw)).length;
   const rmqResidentCount = new Set(visibleTodayWindows.filter((w) => w.station === "RMQ").map((w) => w.aircraft_registration)).size;
@@ -406,7 +435,8 @@ export async function createGroundWindow(supabase: DB, values: GroundWindowValue
   if (values.linked_task_ids !== undefined) {
     await tasksRepo.setLinkedTasksForWindow(supabase, row.id, values.linked_task_ids);
   }
-  return toBoardWindow(row);
+  const aircraft = await planningLookupsRepo.findFleetAircraftByRegistration(supabase, row.aircraft_registration);
+  return toBoardWindow(row, aircraft?.aircraft_type);
 }
 
 export async function updateGroundWindow(supabase: DB, id: string, values: GroundWindowUpdateValues) {
@@ -430,7 +460,8 @@ export async function updateGroundWindow(supabase: DB, id: string, values: Groun
   if (values.linked_task_ids !== undefined) {
     await tasksRepo.setLinkedTasksForWindow(supabase, id, values.linked_task_ids);
   }
-  return toBoardWindow(row);
+  const aircraft = await planningLookupsRepo.findFleetAircraftByRegistration(supabase, row.aircraft_registration);
+  return toBoardWindow(row, aircraft?.aircraft_type);
 }
 
 export async function deleteGroundWindow(supabase: DB, id: string) {
@@ -669,7 +700,12 @@ function parseCsv(text: string): string[][] {
  * arrival station match (a ground/maintenance event, not a real flight to
  * somewhere else), so she can upload the export as-is without pre-filtering
  * out the hundreds of ordinary revenue flights herself. */
-export async function parseImportFile(fileBuffer: Buffer, mimeType: string, fileName: string): Promise<ImportedRow[]> {
+export async function parseImportFile(
+  fileBuffer: Buffer,
+  mimeType: string,
+  fileName: string,
+  longHaulRegistrations: ReadonlySet<string> = new Set()
+): Promise<ImportedRow[]> {
   const isCsv = mimeType === "text/csv" || fileName.toLowerCase().endsWith(".csv");
 
   let headerRow: unknown[];
@@ -734,7 +770,17 @@ export async function parseImportFile(fileBuffer: Buffer, mimeType: string, file
 
   if (arrivalStationColumnIndex === -1) return parsedRows;
 
-  return deriveOpsExportGroundWindows(headerRow, dataRows, arrivalStationColumnIndex) ?? parsedRows;
+  return deriveOpsExportGroundWindows(headerRow, dataRows, arrivalStationColumnIndex, longHaulRegistrations) ?? parsedRows;
+}
+
+/** Registrations for the long-haul fleet (A359/A351), normalized the same
+ * way as everywhere else that matches an ops-export registration against
+ * fleet_master — used to scope the "day stop" rule in
+ * deriveOpsExportGroundWindows to the only aircraft whose schedule can
+ * actually produce one. */
+export async function findLongHaulRegistrations(supabase: DB): Promise<Set<string>> {
+  const fleet = await planningLookupsRepo.findAllFleet(supabase, ["A359", "A351"]);
+  return new Set(fleet.map((f) => normalizeRegistration(f.aircraft_registration)));
 }
 
 type OpsMovement = {
@@ -751,30 +797,39 @@ type OpsMovement = {
 };
 
 /**
- * Turns a raw ops export into two kinds of rows, kept deliberately separate
- * so the board can show and colour them differently:
+ * Turns a raw ops export into three kinds of rows, kept deliberately
+ * separate so the board can show and colour them differently:
  *
  * 1. Overnight ground time — "過夜地停". Walks each aircraft's real flights
  *    (Dep !== Arr) in chronological order and looks at the gap between
  *    landing on one and departing on the next at a home station (TPE/TSA/
- *    RMQ/KHH). Only the gaps that cross a calendar-day boundary become a
- *    row: that's exactly "came back to TPE/RMQ and didn't go out again until
- *    the next day" — an ordinary same-day turnaround between two legs is not
- *    "過夜" and is intentionally left out, so ground-time totals only ever
- *    reflect real overnight stays.
- * 2. Scheduled work items — "已排定的計畫工作". Every Dep===Arr row
+ *    RMQ/KHH). Gaps that cross a calendar-day boundary become a row: that's
+ *    exactly "came back to TPE/RMQ and didn't go out again until the next
+ *    day".
+ * 2. Day stops — "日間長地停". Every route used to come back and go out
+ *    again the same day, so a same-day gap was never worth keeping — it was
+ *    just an ordinary turnaround between two legs. The long-haul fleet
+ *    (A359/A351) breaks that: a US/Europe rotation can land early morning
+ *    and not leave again until evening, hours later but still the same
+ *    calendar day. A same-day gap only becomes a row when the aircraft is in
+ *    `longHaulRegistrations` AND the gap is at least DAY_STOP_MIN_MINUTES —
+ *    toBoardWindow re-derives the same threshold from the stored
+ *    arrival/departure to flag it on the board (isDayStop), so nothing about
+ *    "which rows are day stops" needs to be persisted separately.
+ * 3. Scheduled work items — "已排定的計畫工作". Every Dep===Arr row
  *    (AD/AWS/LTM/A/HMV/…) that has a Check Remark describing the work
  *    becomes its own row, using that row's own STD/STA exactly as given —
- *    never folded into an overnight window's time range, so its real
- *    scheduled start/end stays visible and it can be coloured differently
- *    from plain overnight ground time on the board. A ground-event row with
- *    no remark (just a bare code) carries nothing worth showing on its own
- *    and is skipped.
+ *    never folded into an overnight/day-stop window's time range, so its
+ *    real scheduled start/end stays visible and it can be coloured
+ *    differently from plain ground time on the board. A ground-event row
+ *    with no remark (just a bare code) carries nothing worth showing on its
+ *    own and is skipped.
  */
 function deriveOpsExportGroundWindows(
   headerRow: unknown[],
   dataRows: unknown[][],
-  arrivalStationColumnIndex: number
+  arrivalStationColumnIndex: number,
+  longHaulRegistrations: ReadonlySet<string>
 ): ImportedRow[] | null {
   const registrationIdx = findColumnIndex(headerRow, ["機號", "aircraft_registration", "registration", "aircraft"]);
   const depIdx = findColumnIndex(headerRow, ["dep"]);
@@ -813,8 +868,8 @@ function deriveOpsExportGroundWindows(
     else realFlightsByReg.set(key, [m]);
   }
 
-  const overnightRows: ImportedRow[] = [];
-  for (const list of realFlightsByReg.values()) {
+  const groundTimeRows: ImportedRow[] = [];
+  for (const [regKey, list] of realFlightsByReg) {
     list.sort((a, b) => (a.std! < b.std! ? -1 : a.std! > b.std! ? 1 : 0));
     for (let i = 0; i < list.length - 1; i++) {
       const cur = list[i];
@@ -826,8 +881,14 @@ function deriveOpsExportGroundWindows(
       const station = cur.arrStation;
       if (!HOME_STATIONS.has(station)) continue;
       if (!(next.std! > cur.sta!)) continue; // zero/negative gap — schedule overlap or duplicate row
-      if (dateKeyOf(cur.sta!) === dateKeyOf(next.std!)) continue; // same-day turnaround, not an overnight
-      overnightRows.push({
+      if (dateKeyOf(cur.sta!) === dateKeyOf(next.std!)) {
+        // Same-day turnaround — worth a row only for the long-haul fleet's
+        // day-stop pattern (see doc comment above); an ordinary short
+        // same-day gap on any other aircraft is never kept.
+        const gapMinutes = (new Date(next.std!).getTime() - new Date(cur.sta!).getTime()) / 60000;
+        if (!longHaulRegistrations.has(regKey) || gapMinutes < DAY_STOP_MIN_MINUTES) continue;
+      }
+      groundTimeRows.push({
         aircraft_registration: cur.registration,
         station,
         arrival_at: cur.sta,
@@ -849,7 +910,7 @@ function deriveOpsExportGroundWindows(
       major_work_planned: ge.remark,
     }));
 
-  return [...overnightRows, ...workItemRows];
+  return [...groundTimeRows, ...workItemRows];
 }
 
 /**
