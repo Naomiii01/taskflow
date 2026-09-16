@@ -27,13 +27,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "檔案太大，請控制在 10MB 以內" }, { status: 400 });
     }
 
+    const supabase = await createClient();
+    const longHaulRegistrations = await aircraftPlanningService.findLongHaulRegistrations(supabase);
+
     const buffer = Buffer.from(await file.arrayBuffer());
-    const rows = await aircraftPlanningService.parseImportFile(buffer, file.type, file.name);
+    const rows = await aircraftPlanningService.parseImportFile(buffer, file.type, file.name, longHaulRegistrations);
     if (rows.length === 0) {
       return NextResponse.json({ error: "檔案裡沒有可匯入的資料列" }, { status: 400 });
     }
 
-    const supabase = await createClient();
     const result = await aircraftPlanningService.importGroundWindows(supabase, rows, currentUser.id);
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
