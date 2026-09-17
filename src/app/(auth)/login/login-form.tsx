@@ -34,7 +34,7 @@ export function LoginForm() {
         <form action={loginAction} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="login-username">帳號</Label>
-            <Input id="login-username" name="username" type="text" placeholder="helen" autoCapitalize="none" required />
+            <Input id="login-username" name="username" type="text" autoCapitalize="none" required />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="login-password">密碼</Label>
@@ -53,7 +53,7 @@ export function LoginForm() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="signup-username">帳號</Label>
-            <Input id="signup-username" name="username" type="text" placeholder="helen" autoCapitalize="none" required />
+            <Input id="signup-username" name="username" type="text" autoCapitalize="none" required />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="signup-password">密碼</Label>
