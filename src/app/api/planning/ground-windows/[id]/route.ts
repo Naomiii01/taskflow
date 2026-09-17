@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentUser, handleApiError } from "@/lib/api-utils";
+import { canEditPlanningBoard } from "@/lib/auth";
 import { PermissionError } from "@/lib/errors";
 import { groundWindowUpdateSchema } from "@/lib/validations/planning";
 import * as aircraftPlanningService from "@/lib/services/aircraft-planning-service";
@@ -10,7 +11,8 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    await requireCurrentUser();
+    const currentUser = await requireCurrentUser();
+    if (!canEditPlanningBoard(currentUser)) throw new PermissionError("您沒有 Aircraft Planning Board 的編輯權限");
     const { id } = await params;
     const body = await request.json();
     const values = groundWindowUpdateSchema.parse(body);
