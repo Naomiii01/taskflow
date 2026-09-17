@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TaskFiltersBar } from "@/components/tasks/task-filters-bar";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { TaskTable } from "@/components/tasks/task-table";
-import { useDeleteTask, useDeleteTasks, useTasks, type TaskFilters, type TaskRow } from "@/hooks/use-tasks";
+import { useDeleteTask, useDeleteTasks, useTasks, useUpdateTask, type TaskFilters, type TaskRow } from "@/hooks/use-tasks";
 
 export function TasksClient({ showHeader = true }: { showHeader?: boolean }) {
   const [filters, setFilters] = React.useState<TaskFilters>({
@@ -27,6 +27,7 @@ export function TasksClient({ showHeader = true }: { showHeader?: boolean }) {
   const { data, isLoading } = useTasks(filters);
   const deleteTask = useDeleteTask();
   const deleteTasks = useDeleteTasks();
+  const updateTask = useUpdateTask();
 
   return (
     <div className="flex flex-col gap-4">
@@ -85,6 +86,12 @@ export function TasksClient({ showHeader = true }: { showHeader?: boolean }) {
                 setFormOpen(true);
               }}
               onDelete={(task) => setDeletingTask(task)}
+              onToggleComplete={(task) =>
+                updateTask.mutate({
+                  id: task.id,
+                  values: { status: task.status === "Completed" ? "Todo" : "Completed" },
+                })
+              }
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
             />
