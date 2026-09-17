@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Paperclip, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Paperclip, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAttachments } from "@/hooks/use-attachments";
 import { useDeleteFollowup, useFollowups } from "@/hooks/use-followups";
 import { useTaskLogs } from "@/hooks/use-task-logs";
-import { useDeleteTask, useTask } from "@/hooks/use-tasks";
+import { useDeleteTask, useTask, useUpdateTask } from "@/hooks/use-tasks";
 import {
   IMPACT_LEVEL_BADGE,
   IMPACT_LEVEL_LABELS,
@@ -40,6 +40,7 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
   const { data: logs } = useTaskLogs(taskId);
   const { data: attachmentsRes } = useAttachments({ task_id: taskId, pageSize: 100 });
   const deleteTask = useDeleteTask();
+  const updateTask = useUpdateTask();
   const deleteFollowup = useDeleteFollowup();
 
   const [editOpen, setEditOpen] = React.useState(false);
@@ -113,6 +114,17 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant={task.status === "Completed" ? "outline" : "default"}
+            onClick={() =>
+              updateTask.mutate({
+                id: task.id,
+                values: { status: task.status === "Completed" ? "Todo" : "Completed" },
+              })
+            }
+          >
+            <CheckCircle2 className="size-4" /> {task.status === "Completed" ? "取消完成" : "標記完成"}
+          </Button>
           <Button variant="outline" onClick={() => setEditOpen(true)}>
             <Pencil className="size-4" /> 編輯
           </Button>
@@ -250,6 +262,7 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
         taskId={task.id}
         defaultDepartment={task.department?.department_name}
         followup={editingFollowup}
+        currentStatus={task.status}
       />
       <ConfirmDialog
         open={deleteOpen}
