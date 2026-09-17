@@ -79,6 +79,23 @@ export function ImportGroundWindowsDialog({
                   </ul>
                 </div>
               )}
+              {result.affectedPlanWindows.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <p className="text-destructive">
+                    {result.affectedPlanWindows.length} 筆已排工的地停時間有異動，請確認：
+                  </p>
+                  <ul className="max-h-40 list-disc overflow-y-auto pl-5 text-xs text-muted-foreground">
+                    {result.affectedPlanWindows.map((p) => (
+                      <li key={p.id}>
+                        {p.aircraftRegistration}／{p.station}：
+                        {p.changeType === "time_changed"
+                          ? `時間由 ${p.oldArrivalAt.slice(0, 16).replace("T", " ")} 改為 ${p.newArrivalAt?.slice(0, 16).replace("T", " ")}`
+                          : `原班次（${p.oldArrivalAt.slice(0, 16).replace("T", " ")}）在新班表裡找不到對應班次，已標示［航線異動，請確認］`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>
