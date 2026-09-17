@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Circle, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ export function TaskTable({
   onFiltersChange,
   onEdit,
   onDelete,
+  onToggleComplete,
   selectedIds,
   onSelectionChange,
 }: {
@@ -45,6 +46,8 @@ export function TaskTable({
   onFiltersChange: (filters: TaskFilters) => void;
   onEdit: (task: TaskRow) => void;
   onDelete: (task: TaskRow) => void;
+  /** 完成勾選鍵：Todo/Completed 快速切換，不用開編輯視窗才能結案。 */
+  onToggleComplete: (task: TaskRow) => void;
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
 }) {
@@ -97,6 +100,7 @@ export function TaskTable({
                   onClick={(e) => e.stopPropagation()}
                 />
               </TableHead>
+              <TableHead className="w-10">完成</TableHead>
               {COLUMNS.map((col) => (
                 <TableHead key={col.key}>
                   <button
@@ -126,7 +130,7 @@ export function TaskTable({
           <TableBody>
             {tasks.length === 0 && (
               <TableRow>
-                <TableCell colSpan={12} className="py-10 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={13} className="py-10 text-center text-sm text-muted-foreground">
                   沒有符合條件的任務
                 </TableCell>
               </TableRow>
@@ -144,6 +148,20 @@ export function TaskTable({
                     checked={selection.has(task.id)}
                     onCheckedChange={(checked) => toggleRow(task.id, checked === true)}
                   />
+                </TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    aria-label={task.status === "Completed" ? "取消標記完成" : "標記為已完成"}
+                    onClick={() => onToggleComplete(task)}
+                    className="flex items-center text-muted-foreground hover:text-success"
+                  >
+                    {task.status === "Completed" ? (
+                      <CheckCircle2 className="size-5 text-success" />
+                    ) : (
+                      <Circle className="size-5" />
+                    )}
+                  </button>
                 </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{task.task_number}</TableCell>
                 <TableCell className="max-w-[220px] truncate font-medium">{task.title}</TableCell>
