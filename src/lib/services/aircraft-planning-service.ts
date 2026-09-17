@@ -13,6 +13,7 @@ import type {
 } from "@/types/database.types";
 import { STATIONS } from "@/lib/constants";
 import * as groundWindowsRepo from "@/lib/repositories/aircraft-ground-windows-repository";
+import * as changeLogRepo from "@/lib/repositories/ground-window-change-log-repository";
 import * as residencyWindowsRepo from "@/lib/repositories/aircraft-residency-windows-repository";
 import * as planningLookupsRepo from "@/lib/repositories/planning-lookups-repository";
 import * as tasksRepo from "@/lib/repositories/tasks-repository";
@@ -34,6 +35,12 @@ export type PlanningBoardWindow = {
    * early morning and not leaving again until evening. Never true together
    * with isOvernight (see toBoardWindow). */
   isDayStop: boolean;
+  /** True when a schedule re-import couldn't find a matching new ground stay
+   * for this aircraft/station (route dropped or heavily reshuffled) — the row
+   * is kept as-is (with its last-known times) rather than silently deleted or
+   * silently updated, so its plan isn't lost. Cleared automatically the next
+   * time someone edits and saves this window. */
+  needsConfirmation: boolean;
   notes: string | null;
   // Planning Information — all null when no major work is planned for this stay.
   currentStatus: AircraftCurrentStatus | null;
@@ -134,6 +141,14 @@ function dateKeyOf(iso: string) {
  * rotation landing early morning and not leaving again until evening). The
  * rest of the fleet's same-day gaps are ordinary turnarounds, never a
  * maintenance opportunity worth flagging. */
+/** Re-import plan matching: how close (in wall-clock time) a freshly computed
+ * ground window has to be to an existing *planned* one, same aircraft/station,
+ * to count as "the same stop, just shifted" rather than "this stop is gone".
+ * Generous enough to absorb a multi-hour schedule shift or a push into the
+ * next/previous day, tight enough not to accidentally match an unrelated
+ * later rotation of the same aircraft back through the same station. */
+const PLAN_MATCH_TOLERANCE_MS = 36 * 60 * 60 * 1000;
+
 const LONG_HAUL_TYPES: ReadonlySet<AircraftType> = new Set(["A359", "A351"]);
 /** How long a same-day ground stay has to be before it counts as a "日間長
  * 地停" (day stop) rather than an ordinary turnaround between two legs. */
@@ -160,6 +175,7 @@ function toBoardWindow(
     groundTimeMinutes,
     isOvernight,
     isDayStop,
+    needsConfirmation: row.needs_confirmation,
     notes: row.notes,
     currentStatus: row.current_status,
     majorWorkPlanned: row.major_work_planned,
@@ -440,7 +456,9 @@ export async function createGroundWindow(supabase: DB, values: GroundWindowValue
 }
 
 export async function updateGroundWindow(supabase: DB, id: string, values: GroundWindowUpdateValues) {
-  const patch: Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Update"] = {};
+  // 只要有人打開來儲存過（不論實際改了什麼），就當作已經看過、處理過這筆
+  // 「航線異動，請確認」的提醒——不用另外做一個「確認」按鈕。
+  const patch: Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Update"] = { needs_confirmation: false };
   if (values.aircraft_registration !== undefined) patch.aircraft_registration = values.aircraft_registration;
   if (values.station !== undefined) patch.station = values.station as Station;
   if (values.arrival_at !== undefined) patch.arrival_at = values.arrival_at;
@@ -466,6 +484,62 @@ export async function updateGroundWindow(supabase: DB, id: string, values: Groun
 
 export async function deleteGroundWindow(supabase: DB, id: string) {
   await groundWindowsRepo.deleteWindow(supabase, id);
+}
+
+// --- Ground window change log (re-import history) ---------------------------
+
+export type GroundWindowChangeLogEntry = {
+  id: string;
+  groundWindowId: string;
+  aircraftRegistration: string;
+  station: Station;
+  changeType: "time_changed" | "orphaned";
+  oldArrivalAt: string;
+  oldDepartureAt: string;
+  newArrivalAt: string | null;
+  newDepartureAt: string | null;
+  planSnapshot: { majorWorkPlanned: string | null; shift: string | null; estimatedMh: number | null };
+  // 執行這次匯入的使用者——目前只有兩位可編輯者，異動紀錄要看得出來是誰動的。
+  // null 代表那個帳號後來被刪除了（紀錄本身不會因此消失）。
+  changedBy: { id: string; name: string | null; email: string } | null;
+  createdAt: string;
+};
+
+function toChangeLogEntry(
+  row: Awaited<ReturnType<typeof changeLogRepo.findRecentChangeLog>>[number]
+): GroundWindowChangeLogEntry {
+  const snapshot = (row.plan_snapshot ?? {}) as Record<string, unknown>;
+  const changedByUser = row.changed_by_user;
+  return {
+    id: row.id,
+    groundWindowId: row.ground_window_id,
+    aircraftRegistration: row.aircraft_registration,
+    station: row.station,
+    changeType: row.change_type,
+    oldArrivalAt: row.old_arrival_at,
+    oldDepartureAt: row.old_departure_at,
+    newArrivalAt: row.new_arrival_at,
+    newDepartureAt: row.new_departure_at,
+    planSnapshot: {
+      majorWorkPlanned: (snapshot.major_work_planned as string | null) ?? null,
+      shift: (snapshot.shift as string | null) ?? null,
+      estimatedMh: (snapshot.estimated_mh as number | null) ?? null,
+    },
+    changedBy: changedByUser ? { id: changedByUser.id, name: changedByUser.name, email: changedByUser.email } : null,
+    createdAt: row.created_at,
+  };
+}
+
+/** 單一地停的異動歷史——編輯視窗裡的「異動紀錄」用。 */
+export async function getGroundWindowChangeLog(supabase: DB, groundWindowId: string): Promise<GroundWindowChangeLogEntry[]> {
+  const rows = await changeLogRepo.findChangeLogForWindow(supabase, groundWindowId);
+  return rows.map(toChangeLogEntry);
+}
+
+/** 全機隊最近的異動紀錄——看板工具列的「異動紀錄」列表用。 */
+export async function getRecentGroundWindowChangeLog(supabase: DB): Promise<GroundWindowChangeLogEntry[]> {
+  const rows = await changeLogRepo.findRecentChangeLog(supabase);
+  return rows.map(toChangeLogEntry);
 }
 
 // --- Capacity Warning settings -----------------------------------------------
@@ -511,9 +585,25 @@ export type ImportedRow = {
   major_work_planned: string | null;
 };
 
+/** One already-planned ground window that a re-import touched — either its
+ * time moved to match the new schedule, or the new schedule no longer has a
+ * matching stop for it at all (needsConfirmation gets set on the row). Shown
+ * to whoever ran the import so a plan change never happens unnoticed. */
+export type AffectedPlanWindow = {
+  id: string;
+  aircraftRegistration: string;
+  station: Station;
+  changeType: "time_changed" | "orphaned";
+  oldArrivalAt: string;
+  oldDepartureAt: string;
+  newArrivalAt: string | null;
+  newDepartureAt: string | null;
+};
+
 export type ImportResult = {
   imported: number;
   skipped: { row: number; reason: string }[];
+  affectedPlanWindows: AffectedPlanWindow[];
 };
 
 const HEADER_ALIASES: Record<string, keyof ImportedRow> = {
@@ -928,6 +1018,66 @@ function deriveOpsExportGroundWindows(
  * matters more than the exact timestamps; a window she built by hand
  * (source = 'manual') is never touched by this at all.
  */
+/** Does this row (raw DB shape, snake_case) have ANY Planning Information
+ * filled in? Used by the re-import flow to decide whether a schedule change
+ * needs to preserve + update it (this) or can just be silently replaced like
+ * any other computed window (deleteStaleImportWindows already handles that
+ * case for windows where every one of these is still empty). */
+function hasPlanningInfo(row: {
+  major_work_planned: string | null;
+  shift: string | null;
+  current_status: string | null;
+  estimated_mh: number | null;
+  required_skill: string | null;
+  required_equipment: string | null;
+  required_authorization: string | null;
+  planning_status: string | null;
+}): boolean {
+  return (
+    !!(row.major_work_planned && row.major_work_planned.trim()) ||
+    row.shift != null ||
+    row.current_status != null ||
+    row.estimated_mh != null ||
+    !!(row.required_skill && row.required_skill.trim()) ||
+    !!(row.required_equipment && row.required_equipment.trim()) ||
+    !!(row.required_authorization && row.required_authorization.trim()) ||
+    row.planning_status != null
+  );
+}
+
+/** A snapshot of the Planning Information fields worth remembering in a
+ * change-log entry — just enough to show "what was planned at the time",
+ * not a full duplicate of the row (the row itself still holds the live,
+ * possibly since-edited values). */
+function planSnapshotOf(row: { major_work_planned: string | null; shift: string | null; estimated_mh: number | null }) {
+  return { major_work_planned: row.major_work_planned, shift: row.shift, estimated_mh: row.estimated_mh };
+}
+
+/** Finds the closest not-yet-claimed candidate in `candidates` for the same
+ * aircraft + station within PLAN_MATCH_TOLERANCE_MS of `targetArrivalIso` —
+ * i.e. "which of this file's freshly computed ground windows is probably the
+ * same stop as this already-planned one, just at an updated time". Returns
+ * -1 when nothing is close enough, meaning the schedule no longer has a
+ * matching stop at all. */
+function findBestCandidateIndex(
+  candidates: Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Insert"][],
+  aircraftRegistration: string,
+  station: string,
+  targetArrivalIso: string
+): number {
+  let bestIdx = -1;
+  let bestDiff = Infinity;
+  candidates.forEach((c, idx) => {
+    if (c.aircraft_registration !== aircraftRegistration || c.station !== station) return;
+    const diff = Math.abs(new Date(c.arrival_at as string).getTime() - new Date(targetArrivalIso).getTime());
+    if (diff <= PLAN_MATCH_TOLERANCE_MS && diff < bestDiff) {
+      bestDiff = diff;
+      bestIdx = idx;
+    }
+  });
+  return bestIdx;
+}
+
 export async function importGroundWindows(supabase: DB, rows: ImportedRow[], currentUserId: string): Promise<ImportResult> {
   const fleet = await planningLookupsRepo.findAllFleet(supabase);
   // Keyed by a punctuation-stripped registration so "B58552" (a common ops-
@@ -992,6 +1142,94 @@ export async function importGroundWindows(supabase: DB, rows: ImportedRow[], cur
     if (fileStart === null || row.arrival_at < fileStart) fileStart = row.arrival_at;
     if (fileEnd === null || row.departure_at > fileEnd) fileEnd = row.departure_at;
   }
+  // Aircraft schedules change constantly, so a re-import should carry an
+  // already-*planned* window's time forward to match the new schedule rather
+  // than leaving it stuck on stale times (the old behaviour) — but her plan
+  // itself (major_work_planned, shift, etc.) must never silently vanish, so
+  // every touch here is recorded to ground_window_change_log first. Windows
+  // with no Planning Information at all are unaffected by this and keep
+  // going through the plain delete-and-replace path below.
+  const affectedPlanWindows: AffectedPlanWindow[] = [];
+  if (fileStart !== null && fileEnd !== null) {
+    for (const aircraftRegistration of affectedAircraft) {
+      const existingWindows = await groundWindowsRepo.findWindowsInRange(supabase, aircraftRegistration, fileStart, fileEnd);
+      for (const oldRow of existingWindows) {
+        if (!hasPlanningInfo(oldRow)) continue;
+
+        const candidateIdx = findBestCandidateIndex(toInsert, oldRow.aircraft_registration, oldRow.station, oldRow.arrival_at);
+        if (candidateIdx !== -1) {
+          const candidate = toInsert[candidateIdx];
+          // 不管時間有沒有異動，這個新班次都已經被這筆舊資料代表了，不用
+          // 再另外插入一筆——直接從候選清單移除。
+          toInsert.splice(candidateIdx, 1);
+          const sameTimes = candidate.arrival_at === oldRow.arrival_at && candidate.departure_at === oldRow.departure_at;
+          if (!sameTimes) {
+            await groundWindowsRepo.updateWindow(supabase, oldRow.id, {
+              arrival_at: candidate.arrival_at,
+              departure_at: candidate.departure_at,
+              needs_confirmation: false,
+            });
+            await changeLogRepo.insertChangeLogEntries(supabase, [
+              {
+                ground_window_id: oldRow.id,
+                aircraft_registration: oldRow.aircraft_registration,
+                station: oldRow.station,
+                change_type: "time_changed",
+                old_arrival_at: oldRow.arrival_at,
+                old_departure_at: oldRow.departure_at,
+                new_arrival_at: candidate.arrival_at as string,
+                new_departure_at: candidate.departure_at as string,
+                plan_snapshot: planSnapshotOf(oldRow),
+                changed_by: currentUserId,
+              },
+            ]);
+            affectedPlanWindows.push({
+              id: oldRow.id,
+              aircraftRegistration: oldRow.aircraft_registration,
+              station: oldRow.station,
+              changeType: "time_changed",
+              oldArrivalAt: oldRow.arrival_at,
+              oldDepartureAt: oldRow.departure_at,
+              newArrivalAt: candidate.arrival_at as string,
+              newDepartureAt: candidate.departure_at as string,
+            });
+          } else if (oldRow.needs_confirmation) {
+            // 時間跟以前一樣，但之前被標記過需要確認——這次又對上了，順手清掉。
+            await groundWindowsRepo.updateWindow(supabase, oldRow.id, { needs_confirmation: false });
+          }
+        } else if (!oldRow.needs_confirmation) {
+          // 新班表裡完全找不到對應的班次——保留舊地停跟計畫內容，只標記需要
+          // 人工確認（已經標記過的就不用重複提醒，避免同一筆每天都跳出來）。
+          await groundWindowsRepo.updateWindow(supabase, oldRow.id, { needs_confirmation: true });
+          await changeLogRepo.insertChangeLogEntries(supabase, [
+            {
+              ground_window_id: oldRow.id,
+              aircraft_registration: oldRow.aircraft_registration,
+              station: oldRow.station,
+              change_type: "orphaned",
+              old_arrival_at: oldRow.arrival_at,
+              old_departure_at: oldRow.departure_at,
+              new_arrival_at: null,
+              new_departure_at: null,
+              plan_snapshot: planSnapshotOf(oldRow),
+              changed_by: currentUserId,
+            },
+          ]);
+          affectedPlanWindows.push({
+            id: oldRow.id,
+            aircraftRegistration: oldRow.aircraft_registration,
+            station: oldRow.station,
+            changeType: "orphaned",
+            oldArrivalAt: oldRow.arrival_at,
+            oldDepartureAt: oldRow.departure_at,
+            newArrivalAt: null,
+            newDepartureAt: null,
+          });
+        }
+      }
+    }
+  }
+
   if (fileStart !== null && fileEnd !== null) {
     await Promise.all(
       Array.from(affectedAircraft).map((aircraftRegistration) =>
@@ -1009,5 +1247,5 @@ export async function importGroundWindows(supabase: DB, rows: ImportedRow[], cur
     imported += created.length;
   }
 
-  return { imported, skipped };
+  return { imported, skipped, affectedPlanWindows };
 }
