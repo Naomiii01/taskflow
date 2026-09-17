@@ -109,6 +109,11 @@ export type GroundWindowChangeLogEntry = {
   createdAt: string;
 };
 
+export type GroundWindowSearchResult = PlanningBoardWindow & {
+  aircraftRegistration: string;
+  matchedIn: ("aircraft" | "station" | "work")[];
+};
+
 export type LinkableTask = {
   id: string;
   taskNumber: string;
@@ -246,5 +251,14 @@ export function useRecentGroundWindowChanges(enabled: boolean) {
     queryKey: ["planning", "ground-window-changes"],
     queryFn: () => fetchJson<GroundWindowChangeLogEntry[]>("/api/planning/ground-window-changes"),
     enabled,
+  });
+}
+
+/** 搜尋中心「計畫看板」分頁——用機號／站別／工作內容關鍵字搜尋地停紀錄。 */
+export function useSearchGroundWindows(term: string) {
+  return useQuery({
+    queryKey: ["planning", "ground-windows-search", term],
+    queryFn: () => fetchJson<{ data: GroundWindowSearchResult[] }>(`/api/planning/ground-windows/search?q=${encodeURIComponent(term)}`),
+    enabled: term.trim().length > 0,
   });
 }
