@@ -12,9 +12,10 @@ import { TaskFiltersBar } from "@/components/tasks/task-filters-bar";
 import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 import { TaskTable } from "@/components/tasks/task-table";
 import { DocumentSearchResults } from "@/components/attachments/document-search-results";
+import { GroundWindowSearchResults } from "@/components/planning/ground-window-search-results";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useSearchTasks } from "@/hooks/use-search";
-import { useDeleteTask, useTasks, type TaskFilters, type TaskRow } from "@/hooks/use-tasks";
+import { useDeleteTask, useTasks, useUpdateTask, type TaskFilters, type TaskRow } from "@/hooks/use-tasks";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export function SearchClient() {
@@ -29,12 +30,15 @@ export function SearchClient() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [deletingTask, setDeletingTask] = React.useState<TaskRow | null>(null);
   const deleteTask = useDeleteTask();
+  const updateTask = useUpdateTask();
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-xl font-semibold">搜尋中心</h1>
-        <p className="text-sm text-muted-foreground">跨任務編號、標題、內容、部門與負責人搜尋，或套用常用篩選條件。</p>
+        <p className="text-sm text-muted-foreground">
+          跨任務編號、標題、內容、部門與負責人搜尋；也可切換到「計畫看板」分頁，用機號、站別或地停工作內容查詢，或套用常用篩選條件。
+        </p>
       </div>
 
       <Card>
@@ -52,6 +56,7 @@ export function SearchClient() {
           <Tabs defaultValue="tasks">
             <TabsList>
               <TabsTrigger value="tasks">任務搜尋</TabsTrigger>
+              <TabsTrigger value="planning">計畫看板</TabsTrigger>
               <TabsTrigger value="documents">文件搜尋</TabsTrigger>
             </TabsList>
             <TabsContent value="tasks" className="pt-3">
@@ -68,6 +73,9 @@ export function SearchClient() {
               ) : (
                 <p className="text-sm text-muted-foreground">輸入關鍵字以搜尋任務編號、標題、內容、部門或負責人。</p>
               )}
+            </TabsContent>
+            <TabsContent value="planning" className="pt-3">
+              <GroundWindowSearchResults term={debouncedTerm} />
             </TabsContent>
             <TabsContent value="documents" className="pt-3">
               <DocumentSearchResults term={debouncedTerm} />
@@ -93,6 +101,12 @@ export function SearchClient() {
                 setFormOpen(true);
               }}
               onDelete={(task) => setDeletingTask(task)}
+              onToggleComplete={(task) =>
+                updateTask.mutate({
+                  id: task.id,
+                  values: { status: task.status === "Completed" ? "Todo" : "Completed" },
+                })
+              }
             />
           )}
         </CardContent>
