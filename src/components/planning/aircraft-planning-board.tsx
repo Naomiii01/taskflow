@@ -96,8 +96,9 @@ type EditTarget =
   | { mode: "create"; aircraftRegistration: string; station: string; dateIso: string }
   | { mode: "edit"; aircraftRegistration: string; window: PlanningBoardWindow };
 
-/** Capacity Warning 門檻設定——先用預設值，這裡可以自己調。 */
-function CapacitySettingsPopover() {
+/** Capacity Warning 門檻設定——先用預設值，這裡可以自己調。閱覽者（canEdit
+ * 為 false）還是可以打開看目前的門檻，只是欄位跟儲存按鈕會關閉。 */
+function CapacitySettingsPopover({ canEdit }: { canEdit: boolean }) {
   const { data: settings } = useBoardSettings();
   const updateSettings = useUpdateBoardSettings();
   const [yellow, setYellow] = React.useState("");
@@ -129,13 +130,13 @@ function CapacitySettingsPopover() {
           <p className="text-xs text-muted-foreground">同一天大工數量達到黃色門檻顯示黃色警示，達到紅色門檻顯示紅色警示。</p>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="yellow_threshold">黃色門檻</Label>
-            <Input id="yellow_threshold" type="number" min="0" value={yellow} onChange={(e) => setYellow(e.target.value)} />
+            <Input id="yellow_threshold" type="number" min="0" value={yellow} onChange={(e) => setYellow(e.target.value)} disabled={!canEdit} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="red_threshold">紅色門檻</Label>
-            <Input id="red_threshold" type="number" min="0" value={red} onChange={(e) => setRed(e.target.value)} />
+            <Input id="red_threshold" type="number" min="0" value={red} onChange={(e) => setRed(e.target.value)} disabled={!canEdit} />
           </div>
-          <Button size="sm" onClick={onSave} disabled={updateSettings.isPending}>儲存</Button>
+          {canEdit && <Button size="sm" onClick={onSave} disabled={updateSettings.isPending}>儲存</Button>}
         </div>
       </PopoverContent>
     </Popover>
@@ -148,7 +149,7 @@ function CapacitySettingsPopover() {
  * 用強調色標示（Overnight Opportunity），這是航機可用性排程真正要看的東西，
  * 而不是待辦事項清單。資料來自 aircraft_ground_windows（手動登記或匯入班表）。
  */
-export function AircraftPlanningBoard() {
+export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } = {}) {
   const [anchor, setAnchor] = React.useState(() => new Date());
   const [viewMode, setViewMode] = React.useState<ViewMode>("week");
   const [aircraftTypeFilter, setAircraftTypeFilter] = React.useState<string | undefined>(undefined);
@@ -219,20 +220,24 @@ export function AircraftPlanningBoard() {
           <p className="text-sm text-muted-foreground">機號 × 日期的地面時間總覽 — 可用窗口、停留時間、過夜機會。</p>
         </div>
         <div className="flex items-center gap-2">
-          <CapacitySettingsPopover />
+          <CapacitySettingsPopover canEdit={canEdit} />
           <Button variant="outline" size="sm" onClick={() => setChangeLogOpen(true)}>
             <History className="size-3.5" /> 異動紀錄
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-            <Upload className="size-3.5" /> 匯入班表
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => openCreateFor({ aircraftRegistration: "", aircraftType: "", homeStation: "TPE", windows: [], residencyWindows: [] }, startIso)}
-            disabled={aircraftOptions.length === 0}
-          >
-            <Plus className="size-3.5" /> 新增地面時間
-          </Button>
+          {canEdit && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                <Upload className="size-3.5" /> 匯入班表
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => openCreateFor({ aircraftRegistration: "", aircraftType: "", homeStation: "TPE", windows: [], residencyWindows: [] }, startIso)}
+                disabled={aircraftOptions.length === 0}
+              >
+                <Plus className="size-3.5" /> 新增地面時間
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -471,13 +476,15 @@ export function AircraftPlanningBoard() {
                                   </button>
                                 );
                               })}
-                              <button
-                                type="button"
-                                onClick={() => openCreateFor(a, dayIso)}
-                                className="rounded-md border border-dashed border-border/60 py-1 text-center text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:border-primary/50 hover:text-primary"
-                              >
-                                <Plus className="mx-auto size-3" />
-                              </button>
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => openCreateFor(a, dayIso)}
+                                  className="rounded-md border border-dashed border-border/60 py-1 text-center text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:border-primary/50 hover:text-primary"
+                                >
+                                  <Plus className="mx-auto size-3" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         );
@@ -501,6 +508,7 @@ export function AircraftPlanningBoard() {
         defaultAircraftRegistration={editTarget?.mode === "create" ? editTarget.aircraftRegistration || undefined : undefined}
         defaultStation={editTarget?.mode === "create" ? editTarget.station : undefined}
         defaultDateIso={editTarget?.mode === "create" ? editTarget.dateIso : undefined}
+        readOnly={!canEdit}
       />
       <ImportGroundWindowsDialog open={importOpen} onOpenChange={setImportOpen} />
       <GroundWindowChangeLogDialog open={changeLogOpen} onOpenChange={setChangeLogOpen} />
