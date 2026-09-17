@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { addDays, eachDayOfInterval, isToday as isDateToday } from "date-fns";
-import { CalendarClock, ChevronLeft, ChevronRight, ClipboardList, Clock, MapPin, Moon, Plus, Settings2, Upload, Wrench } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, ClipboardList, Clock, History, MapPin, Moon, Plus, Settings2, Upload, Wrench } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { AddGroundWindowDialog, type AircraftOption } from "@/components/planning/add-ground-window-dialog";
 import { ImportGroundWindowsDialog } from "@/components/planning/import-ground-windows-dialog";
+import { GroundWindowChangeLogDialog } from "@/components/planning/ground-window-change-log-dialog";
 import {
   useAircraftPlanningBoard,
   useBoardSettings,
@@ -63,20 +64,23 @@ function hasMajorWork(w: PlanningBoardWindow): boolean {
 }
 
 /** 格子裡的文字：有排大工就顯示「工作名稱-班別-MH」，沒有排大工就只顯示
- * 幾點到幾點／過夜，不用特別寫站別——站別已經在機號那欄顯示了。 */
+ * 幾點到幾點／過夜，不用特別寫站別——站別已經在機號那欄顯示了。重新匯入班表
+ * 後找不到對應新班次的地停，不管原本是哪一種內容，前面都會加上醒目提示，
+ * 讓人一眼就知道這筆時間可能已經過期、要確認。 */
 function cellLabel(w: PlanningBoardWindow, segment: Segment) {
+  const prefix = w.needsConfirmation ? "⚠ 航線異動，請確認｜" : "";
   if (hasMajorWork(w)) {
     const workName = w.majorWorkPlanned!.split("\n")[0].trim();
     const parts = [workName, w.shift, w.estimatedMh != null ? `${w.estimatedMh}MH` : null];
-    return parts.filter(Boolean).join("-");
+    return prefix + parts.filter(Boolean).join("-");
   }
   if (segment === "same") {
     const range = `${hhmm(w.arrivalAt)}–${hhmm(w.departureAt)}`;
-    return w.isDayStop ? `${range} 長地停` : range;
+    return prefix + (w.isDayStop ? `${range} 長地停` : range);
   }
-  if (segment === "arrival") return `${hhmm(w.arrivalAt)} 起過夜`;
-  if (segment === "departure") return `過夜 至${hhmm(w.departureAt)}`;
-  return "過夜中";
+  if (segment === "arrival") return `${prefix}${hhmm(w.arrivalAt)} 起過夜`;
+  if (segment === "departure") return `${prefix}過夜 至${hhmm(w.departureAt)}`;
+  return `${prefix}過夜中`;
 }
 
 /** 機號欄下方的「駐留區間」——只有選到的那一天剛好落在某段地面時間裡才會
@@ -152,6 +156,7 @@ export function AircraftPlanningBoard() {
   const [stationFilter, setStationFilter] = React.useState<string | undefined>(undefined);
   const [editTarget, setEditTarget] = React.useState<EditTarget | null>(null);
   const [importOpen, setImportOpen] = React.useState(false);
+  const [changeLogOpen, setChangeLogOpen] = React.useState(false);
   // 機號欄下方「目前駐留地點」要看哪一天——點日期欄的標題可以換；換頁
   // （往前/往後一頁，頁的長度依天/週/月而定）如果選到的那天不在畫面範圍
   // 裡，就退回顯示第一天。
@@ -215,6 +220,9 @@ export function AircraftPlanningBoard() {
         </div>
         <div className="flex items-center gap-2">
           <CapacitySettingsPopover />
+          <Button variant="outline" size="sm" onClick={() => setChangeLogOpen(true)}>
+            <History className="size-3.5" /> 異動紀錄
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Upload className="size-3.5" /> 匯入班表
           </Button>
@@ -453,7 +461,10 @@ export function AircraftPlanningBoard() {
                                           ? "bg-success/15 text-foreground"
                                           : dayStop
                                             ? "bg-day-stop/15 text-foreground"
-                                            : "bg-muted/50 text-foreground"
+                                            : "bg-muted/50 text-foreground",
+                                      // 找不到對應新班次、需要人工確認的地停——不管本來是哪種顏色，
+                                      // 都加一圈醒目的紅框，跟其他狀態疊加也看得出來。
+                                      w.needsConfirmation && "ring-2 ring-destructive ring-offset-1"
                                     )}
                                   >
                                     {cellLabel(w, segment)}
@@ -492,6 +503,7 @@ export function AircraftPlanningBoard() {
         defaultDateIso={editTarget?.mode === "create" ? editTarget.dateIso : undefined}
       />
       <ImportGroundWindowsDialog open={importOpen} onOpenChange={setImportOpen} />
+      <GroundWindowChangeLogDialog open={changeLogOpen} onOpenChange={setChangeLogOpen} />
     </div>
   );
 }
