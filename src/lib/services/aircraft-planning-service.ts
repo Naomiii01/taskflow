@@ -11,7 +11,7 @@ import type {
   MajorWorkPlanningStatus,
   WorkShift,
 } from "@/types/database.types";
-import { STATIONS } from "@/lib/constants";
+import { STATIONS, STATION_LABELS } from "@/lib/constants";
 import * as groundWindowsRepo from "@/lib/repositories/aircraft-ground-windows-repository";
 import * as changeLogRepo from "@/lib/repositories/ground-window-change-log-repository";
 import * as residencyWindowsRepo from "@/lib/repositories/aircraft-residency-windows-repository";
@@ -484,6 +484,38 @@ export async function updateGroundWindow(supabase: DB, id: string, values: Groun
 
 export async function deleteGroundWindow(supabase: DB, id: string) {
   await groundWindowsRepo.deleteWindow(supabase, id);
+}
+
+// --- Search Center: keyword search across ground windows --------------------
+
+export type GroundWindowMatchField = "aircraft" | "station" | "work";
+
+export type GroundWindowSearchResult = PlanningBoardWindow & {
+  aircraftRegistration: string;
+  matchedIn: GroundWindowMatchField[];
+};
+
+/** 搜尋中心「計畫看板」分頁——不管關鍵字打的是機號、站別（代碼或站名都算），
+ * 還是排入這個地停的工作內容（備註／計畫大工項目／所需技術能力／設備／授權
+ * 資格），符合就列出來。 */
+export async function searchGroundWindows(supabase: DB, term: string): Promise<GroundWindowSearchResult[]> {
+  const trimmed = term.trim();
+  if (!trimmed) return [];
+  const lower = trimmed.toLowerCase();
+  const matchingStations = STATIONS.filter(
+    (s) => s.toLowerCase().includes(lower) || STATION_LABELS[s].toLowerCase().includes(lower)
+  );
+
+  const rows = await groundWindowsRepo.searchGroundWindows(supabase, trimmed, matchingStations);
+
+  return rows.map((row) => {
+    const matchedIn: GroundWindowMatchField[] = [];
+    if (row.aircraft_registration.toLowerCase().includes(lower)) matchedIn.push("aircraft");
+    if ((matchingStations as string[]).includes(row.station)) matchedIn.push("station");
+    const workFields = [row.notes, row.major_work_planned, row.required_skill, row.required_equipment, row.required_authorization];
+    if (workFields.some((f) => f?.toLowerCase().includes(lower))) matchedIn.push("work");
+    return { ...toBoardWindow(row), aircraftRegistration: row.aircraft_registration, matchedIn };
+  });
 }
 
 // --- Ground window change log (re-import history) ---------------------------
