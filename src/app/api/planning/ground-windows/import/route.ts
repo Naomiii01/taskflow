@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentUser, handleApiError } from "@/lib/api-utils";
+import { canEditPlanningBoard } from "@/lib/auth";
+import { PermissionError } from "@/lib/errors";
 import * as aircraftPlanningService from "@/lib/services/aircraft-planning-service";
 
 export const runtime = "nodejs";
@@ -10,10 +12,11 @@ const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = [".xlsx", ".csv"];
 
 /** 班表匯入：接受 .xlsx / .csv，欄位用寬鬆的別名比對（機號/站別/進站/離站/
- * 備註），逐列驗證後批次寫入，錯誤的列不會擋住其他列。 */
+ * 備註），逐列驗證後批次寫入，錯誤的列不會擋住其他列。閱覽者不能匯入。 */
 export async function POST(request: NextRequest) {
   try {
     const currentUser = await requireCurrentUser();
+    if (!canEditPlanningBoard(currentUser)) throw new PermissionError("您沒有 Aircraft Planning Board 的編輯權限");
     const form = await request.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
