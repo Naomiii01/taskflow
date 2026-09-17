@@ -1323,6 +1323,10 @@ export interface Database {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      resolve_login_email: {
+        Args: { p_username: string };
+        Returns: string;
+      };
     };
     Enums: {
       user_role: UserRole;
