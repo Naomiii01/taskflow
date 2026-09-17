@@ -33,8 +33,8 @@ export function LoginForm() {
       <TabsContent value="login">
         <form action={loginAction} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="login-email">Email</Label>
-            <Input id="login-email" name="email" type="email" placeholder="you@company.com" required />
+            <Label htmlFor="login-username">帳號</Label>
+            <Input id="login-username" name="username" type="text" placeholder="helen" autoCapitalize="none" required />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="login-password">密碼</Label>
@@ -52,8 +52,8 @@ export function LoginForm() {
             <Input id="signup-name" name="name" placeholder="王小明" required />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="signup-email">Email</Label>
-            <Input id="signup-email" name="email" type="email" placeholder="you@company.com" required />
+            <Label htmlFor="signup-username">帳號</Label>
+            <Input id="signup-username" name="username" type="text" placeholder="helen" autoCapitalize="none" required />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="signup-password">密碼</Label>
