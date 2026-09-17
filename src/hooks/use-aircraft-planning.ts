@@ -13,6 +13,7 @@ export type PlanningBoardWindow = {
   groundTimeMinutes: number;
   isOvernight: boolean;
   isDayStop: boolean;
+  needsConfirmation: boolean;
   notes: string | null;
   // Planning Information — null when this ground stay has no major work planned.
   currentStatus: string | null;
@@ -76,9 +77,36 @@ export type PlanningBoard = {
   capacitySettings: BoardCapacitySettings;
 };
 
+export type AffectedPlanWindow = {
+  id: string;
+  aircraftRegistration: string;
+  station: string;
+  changeType: "time_changed" | "orphaned";
+  oldArrivalAt: string;
+  oldDepartureAt: string;
+  newArrivalAt: string | null;
+  newDepartureAt: string | null;
+};
+
 export type ImportResult = {
   imported: number;
   skipped: { row: number; reason: string }[];
+  affectedPlanWindows: AffectedPlanWindow[];
+};
+
+export type GroundWindowChangeLogEntry = {
+  id: string;
+  groundWindowId: string;
+  aircraftRegistration: string;
+  station: string;
+  changeType: "time_changed" | "orphaned";
+  oldArrivalAt: string;
+  oldDepartureAt: string;
+  newArrivalAt: string | null;
+  newDepartureAt: string | null;
+  planSnapshot: { majorWorkPlanned: string | null; shift: string | null; estimatedMh: number | null };
+  changedBy: { id: string; name: string | null; email: string } | null;
+  createdAt: string;
 };
 
 export type LinkableTask = {
@@ -192,8 +220,31 @@ export function useImportGroundWindows() {
     onSuccess: (result) => {
       if (result.imported > 0) toast.success(`已匯入 ${result.imported} 筆地面時間`);
       if (result.skipped.length > 0) toast.warning(`有 ${result.skipped.length} 列無法匯入，請查看明細`);
+      if (result.affectedPlanWindows.length > 0) {
+        toast.warning(`有 ${result.affectedPlanWindows.length} 筆已排工的地停時間有異動，請查看明細確認`);
+      }
       queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
+      queryClient.invalidateQueries({ queryKey: ["planning", "ground-window-changes"] });
+      queryClient.invalidateQueries({ queryKey: ["planning", "ground-window-change-log"] });
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+/** 單一地停的異動歷史——編輯視窗裡的「異動紀錄」用，只在有 windowId 時才查。 */
+export function useGroundWindowChangeLog(windowId?: string) {
+  return useQuery({
+    queryKey: ["planning", "ground-window-change-log", windowId],
+    queryFn: () => fetchJson<GroundWindowChangeLogEntry[]>(`/api/planning/ground-windows/${windowId}/change-log`),
+    enabled: !!windowId,
+  });
+}
+
+/** 全機隊最近的異動紀錄——看板工具列的「異動紀錄」列表用。 */
+export function useRecentGroundWindowChanges(enabled: boolean) {
+  return useQuery({
+    queryKey: ["planning", "ground-window-changes"],
+    queryFn: () => fetchJson<GroundWindowChangeLogEntry[]>("/api/planning/ground-window-changes"),
+    enabled,
   });
 }
