@@ -27,3 +27,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
   return profile ?? null;
 }
+
+/** Aircraft Planning Board 專用的編輯者/閱覽者判斷——跟系統其他功能用的 role
+ * (Admin/Manager/User) 分開，只影響地面時間新增/編輯、匯入班表、容量警示門檻
+ * 這幾個地方。Admin 永遠視為 editor，不受 planning_board_role 限制（跟資料庫
+ * 那邊 taskflow.can_edit_planning_board() 的邏輯保持一致）。 */
+export function canEditPlanningBoard(user: Pick<CurrentUser, "role" | "planning_board_role">): boolean {
+  return user.role === "Admin" || user.planning_board_role === "editor";
+}
