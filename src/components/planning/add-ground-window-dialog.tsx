@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   useCreateGroundWindow,
   useDeleteGroundWindow,
+  useGroundWindowChangeLog,
   useLinkableTasks,
   useUpdateGroundWindow,
   type PlanningBoardWindow,
@@ -121,6 +122,8 @@ export function AddGroundWindowDialog({
   // 工單連結只在編輯模式提供——新增中的窗口還沒有 id 可以連結。
   const { data: linkableTasks } = useLinkableTasks();
   const [selectedTaskIds, setSelectedTaskIds] = React.useState<string[]>([]);
+  // 異動紀錄——只有編輯既有地停時才查，新增中的窗口還沒有歷史可看。
+  const { data: changeLog } = useGroundWindowChangeLog(isEditing ? editingWindow?.id : undefined);
 
   const {
     register,
@@ -187,6 +190,12 @@ export function AddGroundWindowDialog({
           <DialogTitle>{isEditing ? "編輯地面時間" : "新增地面時間"}</DialogTitle>
           <DialogDescription>登記這架飛機在某一站的進站～離站時間，用來算可用窗口與過夜機會。</DialogDescription>
         </DialogHeader>
+        {isEditing && editingWindow?.needsConfirmation && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            ⚠ 航線異動，請確認——重新匯入班表後，找不到這架飛機在這一站對應的新班次，下面顯示的是原本登記的時間。
+            請確認這段計畫工作後續怎麼處理（更新時間、改排他處，或刪除），儲存後這個提醒會自動消失。
+          </div>
+        )}
         <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
@@ -360,6 +369,24 @@ export function AddGroundWindowDialog({
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {isEditing && changeLog && changeLog.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <Label>異動紀錄</Label>
+                  <div className="max-h-32 overflow-y-auto rounded-md border p-2 flex flex-col gap-1.5 text-xs text-muted-foreground">
+                    {changeLog.map((e) => (
+                      <p key={e.id}>
+                        {e.createdAt.slice(0, 16).replace("T", " ")}
+                        {" "}
+                        {e.changedBy?.name || e.changedBy?.email || "不明使用者"} 匯入班表時，
+                        {e.changeType === "time_changed"
+                          ? `時間由 ${e.oldArrivalAt.slice(0, 16).replace("T", " ")} 改為 ${e.newArrivalAt?.slice(0, 16).replace("T", " ")}`
+                          : "找不到對應的新班次（原時間已保留，並標示需要確認）"}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
