@@ -49,6 +49,30 @@ export async function findWindowsInRange(
   return data ?? [];
 }
 
+/** Keyword search for the Search Center's Planning Board tab — matches
+ * 機號／備註／計畫大工項目／所需技術能力／設備／授權資格, plus 站別 when
+ * `matchingStations` (pre-filtered by the caller against the station code/
+ * label, since that mapping only exists client-side) is non-empty. */
+export async function searchGroundWindows(supabase: DB, term: string, matchingStations: string[]) {
+  const orParts = [
+    `aircraft_registration.ilike.%${term}%`,
+    `notes.ilike.%${term}%`,
+    `major_work_planned.ilike.%${term}%`,
+    `required_skill.ilike.%${term}%`,
+    `required_equipment.ilike.%${term}%`,
+    `required_authorization.ilike.%${term}%`,
+  ];
+  if (matchingStations.length) orParts.push(`station.in.(${matchingStations.join(",")})`);
+  const { data, error } = await supabase
+    .from("aircraft_ground_windows")
+    .select(GROUND_WINDOW_SELECT)
+    .or(orParts.join(","))
+    .order("arrival_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function findWindowById(supabase: DB, id: string) {
   const { data, error } = await supabase
     .from("aircraft_ground_windows")
