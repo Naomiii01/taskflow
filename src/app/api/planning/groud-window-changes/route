@@ -1,0 +1,17 @@
+import { NextResponse } from "next/server";
+
+import { createClient } from "@/lib/supabase/server";
+import { requireCurrentUser, handleApiError } from "@/lib/api-utils";
+import * as aircraftPlanningService from "@/lib/services/aircraft-planning-service";
+
+/** 全機隊最近的異動紀錄——看板工具列的「異動紀錄」列表用。 */
+export async function GET() {
+  try {
+    await requireCurrentUser();
+    const supabase = await createClient();
+    const entries = await aircraftPlanningService.getRecentGroundWindowChangeLog(supabase);
+    return NextResponse.json(entries);
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
