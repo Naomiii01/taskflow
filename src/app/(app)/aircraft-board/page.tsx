@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { AircraftPlanningBoard } from "@/components/planning/aircraft-planning-board";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, canEditPlanningBoard } from "@/lib/auth";
 
 export const metadata: Metadata = { title: "Aircraft Planning Board" };
 
@@ -15,5 +15,5 @@ export default async function AircraftBoardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  return <AircraftPlanningBoard />;
+  return <AircraftPlanningBoard canEdit={canEditPlanningBoard(user)} />;
 }
