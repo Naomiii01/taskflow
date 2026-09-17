@@ -9,6 +9,9 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type UserRole = "Admin" | "Manager" | "User";
+// Aircraft Planning Board 專用的權限，跟上面的 UserRole 分開 —— 見
+// supabase/migrations/20260917020001_taskflow_planning_board_editor_viewer.sql
+export type PlanningBoardRole = "editor" | "viewer";
 
 export type TaskStatus =
   | "Todo"
@@ -140,6 +143,9 @@ export interface Database {
           email: string;
           name: string | null;
           role: UserRole;
+          // Aircraft Planning Board 專用權限，跟上面的 role 分開 —— 見
+          // supabase/migrations/20260917020001_taskflow_planning_board_editor_viewer.sql
+          planning_board_role: PlanningBoardRole;
           avatar_url: string | null;
           created_at: string;
         };
@@ -148,6 +154,7 @@ export interface Database {
           email: string;
           name?: string | null;
           role?: UserRole;
+          planning_board_role?: PlanningBoardRole;
           avatar_url?: string | null;
           created_at?: string;
         };
