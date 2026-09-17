@@ -15,9 +15,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAddFollowup, useUpdateFollowup } from "@/hooks/use-followups";
+import { useUpdateTask } from "@/hooks/use-tasks";
 import { followupFormSchema, type FollowupFormValues } from "@/lib/validations/followup";
+import { TASK_STATUS_LABELS, TASK_STATUSES } from "@/lib/constants";
 import type { FollowupWithAuthor } from "@/types/domain";
+import type { TaskStatus } from "@/types/database.types";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -56,16 +60,21 @@ export function AddFollowupDialog({
   taskId,
   defaultDepartment,
   followup,
+  currentStatus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   taskId: string;
   defaultDepartment?: string | null;
   followup?: FollowupWithAuthor | null;
+  /** 任務目前的狀態 — 讓「新增/編輯追蹤紀錄」時可以順手一起把狀態進度更新，
+   * 不用另外開編輯任務視窗才能改狀態。 */
+  currentStatus?: TaskStatus;
 }) {
   const isEditing = !!followup;
   const addFollowup = useAddFollowup();
   const updateFollowup = useUpdateFollowup();
+  const updateTask = useUpdateTask();
   const {
     register,
     handleSubmit,
@@ -75,12 +84,14 @@ export function AddFollowupDialog({
     resolver: zodResolver(followupFormSchema),
     defaultValues: emptyValues(taskId, defaultDepartment),
   });
+  const [statusValue, setStatusValue] = React.useState<TaskStatus | undefined>(currentStatus);
 
   React.useEffect(() => {
     if (open) {
       reset(followup ? valuesFromFollowup(followup) : emptyValues(taskId, defaultDepartment));
+      setStatusValue(currentStatus);
     }
-  }, [open, taskId, defaultDepartment, followup, reset]);
+  }, [open, taskId, defaultDepartment, followup, currentStatus, reset]);
 
   const onSubmit = async (values: FollowupFormValues) => {
     if (isEditing && followup) {
@@ -92,6 +103,10 @@ export function AddFollowupDialog({
       });
     } else {
       await addFollowup.mutateAsync(values);
+    }
+    // 狀態進度可以在追蹤紀錄這裡順手一起改，跟編輯任務用的是同一個更新 API。
+    if (statusValue && statusValue !== currentStatus) {
+      await updateTask.mutateAsync({ id: taskId, values: { status: statusValue } });
     }
     onOpenChange(false);
   };
@@ -134,6 +149,19 @@ export function AddFollowupDialog({
             <Label htmlFor="next_action">下一步行動</Label>
             <Input id="next_action" {...register("next_action")} placeholder="下一步要做什麼、什麼時候" />
           </div>
+          {currentStatus && (
+            <div className="flex flex-col gap-1.5 border-t pt-4">
+              <Label>順便更新任務狀態</Label>
+              <Select value={statusValue} onValueChange={(v) => setStatusValue(v as TaskStatus)}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TASK_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{TASK_STATUS_LABELS[s]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               取消
