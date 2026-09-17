@@ -7,7 +7,7 @@ import type { Database } from "@/types/database.types";
 type DB = SupabaseClient<Database, "taskflow">;
 
 const GROUND_WINDOW_SELECT =
-  "id, aircraft_registration, station, arrival_at, departure_at, notes, source, current_status, major_work_planned, estimated_mh, required_skill, required_equipment, required_authorization, planning_status, shift, created_by, created_at, updated_at";
+  "id, aircraft_registration, station, arrival_at, departure_at, notes, source, current_status, major_work_planned, estimated_mh, required_skill, required_equipment, required_authorization, planning_status, shift, needs_confirmation, created_by, created_at, updated_at";
 
 /**
  * Windows that overlap [startIso, endExclusiveIso) — i.e. any part of the
@@ -21,6 +21,29 @@ export async function findWindowsOverlapping(supabase: DB, startIso: string, end
     .select(GROUND_WINDOW_SELECT)
     .lt("arrival_at", endExclusiveIso)
     .gt("departure_at", startIso)
+    .order("arrival_at");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Every window for one aircraft whose arrival falls in [rangeStartIso,
+ * rangeEndExclusiveIso) — used by the re-import flow to find windows that
+ * already have Planning Information filled in, so a schedule change can
+ * update their times (and log the change) instead of silently leaving them
+ * stranded or duplicating them. Order matches `findAllFleet`'s expectation
+ * of earliest-first so repeated re-imports match candidates deterministically. */
+export async function findWindowsInRange(
+  supabase: DB,
+  aircraftRegistration: string,
+  rangeStartIso: string,
+  rangeEndExclusiveIso: string
+) {
+  const { data, error } = await supabase
+    .from("aircraft_ground_windows")
+    .select(GROUND_WINDOW_SELECT)
+    .eq("aircraft_registration", aircraftRegistration)
+    .gte("arrival_at", rangeStartIso)
+    .lt("arrival_at", rangeEndExclusiveIso)
     .order("arrival_at");
   if (error) throw error;
   return data ?? [];
