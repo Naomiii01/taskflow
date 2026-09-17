@@ -105,6 +105,7 @@ export function AddGroundWindowDialog({
   defaultAircraftRegistration,
   defaultStation,
   defaultDateIso,
+  readOnly = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -114,6 +115,9 @@ export function AddGroundWindowDialog({
   defaultAircraftRegistration?: string;
   defaultStation?: string;
   defaultDateIso?: string;
+  /** 閱覽者（沒有 Aircraft Planning Board 編輯權限）——整個表單唯讀，只能看
+   * 內容，看不到儲存／新增／刪除按鈕。 */
+  readOnly?: boolean;
 }) {
   const isEditing = !!editingWindow && !!editingAircraftRegistration;
   const createWindow = useCreateGroundWindow();
@@ -190,6 +194,11 @@ export function AddGroundWindowDialog({
           <DialogTitle>{isEditing ? "編輯地面時間" : "新增地面時間"}</DialogTitle>
           <DialogDescription>登記這架飛機在某一站的進站～離站時間，用來算可用窗口與過夜機會。</DialogDescription>
         </DialogHeader>
+        {readOnly && (
+          <div className="rounded-xl border border-border/70 bg-muted/40 p-3 text-sm text-muted-foreground">
+            檢視模式——您的帳號目前沒有 Aircraft Planning Board 的編輯權限，只能查看內容。
+          </div>
+        )}
         {isEditing && editingWindow?.needsConfirmation && (
           <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             ⚠ 航線異動，請確認——重新匯入班表後，找不到這架飛機在這一站對應的新班次，下面顯示的是原本登記的時間。
@@ -197,6 +206,7 @@ export function AddGroundWindowDialog({
           </div>
         )}
         <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
+        <fieldset disabled={readOnly} className="contents">
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <Label>機號 *</Label>
@@ -391,9 +401,10 @@ export function AddGroundWindowDialog({
               )}
             </div>
           </div>
+        </fieldset>
 
           <DialogFooter className="flex items-center justify-between sm:justify-between">
-            {isEditing ? (
+            {isEditing && !readOnly ? (
               <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={onDelete}>
                 刪除
               </Button>
@@ -402,11 +413,13 @@ export function AddGroundWindowDialog({
             )}
             <div className="flex gap-2">
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                取消
+                {readOnly ? "關閉" : "取消"}
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isEditing ? "儲存變更" : "新增"}
-              </Button>
+              {!readOnly && (
+                <Button type="submit" disabled={isSubmitting}>
+                  {isEditing ? "儲存變更" : "新增"}
+                </Button>
+              )}
             </div>
           </DialogFooter>
         </form>
