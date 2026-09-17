@@ -892,6 +892,9 @@ export interface Database {
           required_authorization: string | null;
           planning_status: MajorWorkPlanningStatus | null;
           shift: WorkShift | null;
+          // 重新匯入班表時找不到對應新班次（航線被拿掉/大改）——見
+          // supabase/migrations/20260917000001_taskflow_ground_window_change_tracking.sql
+          needs_confirmation: boolean;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -912,12 +915,65 @@ export interface Database {
           required_authorization?: string | null;
           planning_status?: MajorWorkPlanningStatus | null;
           shift?: WorkShift | null;
+          needs_confirmation?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["taskflow"]["Tables"]["aircraft_ground_windows"]["Insert"]>;
         Relationships: [];
+      };
+      // 已排計畫工作的地停被重新匯入異動（時間變更／找不到對應新班次）時的
+      // 歷史紀錄，供查核用 —— 見
+      // supabase/migrations/20260917000001_taskflow_ground_window_change_tracking.sql
+      ground_window_change_log: {
+        Row: {
+          id: string;
+          ground_window_id: string;
+          aircraft_registration: string;
+          station: Station;
+          change_type: "time_changed" | "orphaned";
+          old_arrival_at: string;
+          old_departure_at: string;
+          new_arrival_at: string | null;
+          new_departure_at: string | null;
+          plan_snapshot: Json;
+          // 執行這次匯入、導致這筆地停被異動的使用者——見
+          // supabase/migrations/20260917010001_taskflow_ground_window_change_log_changed_by.sql
+          changed_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          ground_window_id: string;
+          aircraft_registration: string;
+          station: Station;
+          change_type: "time_changed" | "orphaned";
+          old_arrival_at: string;
+          old_departure_at: string;
+          new_arrival_at?: string | null;
+          new_departure_at?: string | null;
+          plan_snapshot?: Json;
+          changed_by?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["taskflow"]["Tables"]["ground_window_change_log"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "ground_window_change_log_ground_window_id_fkey";
+            columns: ["ground_window_id"];
+            isOneToOne: false;
+            referencedRelation: "aircraft_ground_windows";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ground_window_change_log_changed_by_fkey";
+            columns: ["changed_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       // 航機長期駐留場站排程（駐廠輪替表），跟 aircraft_ground_windows 分開儲存、
       // 疊加顯示 —— 見 supabase/migrations/20260916034000_taskflow_aircraft_residency_windows.sql
