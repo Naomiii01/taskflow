@@ -65,6 +65,10 @@ export type Station = "TPE" | "TSA" | "RMQ" | "KHH";
  * 'import' = brought in from an uploaded schedule file. */
 export type GroundWindowSource = "manual" | "import";
 
+/** 機坪維修部（接送機LINE上作業）／基地維修部（長地停重工）—— 哪個部門正在
+ * 執行這架飛機的工作。見 aircraft_department_windows。 */
+export type MaintenanceDepartment = "機坪" | "基地";
+
 /** Aircraft Planning Board Lite "Current Status" — the aircraft's operational
  * state during a given ground-time window. */
 export type AircraftCurrentStatus = "Available" | "In Service" | "In Maintenance" | "AOG";
@@ -1010,6 +1014,41 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["taskflow"]["Tables"]["aircraft_residency_windows"]["Insert"]>;
+        Relationships: [];
+      };
+      // 機坪維修部／基地維修部——哪架飛機現在在哪個部門手上，通常從年度維修計畫表
+      // 匯入。跟 aircraft_ground_windows／aircraft_residency_windows 分開儲存、
+      // 疊加顯示 —— 見 supabase/migrations/20260918010000_taskflow_aircraft_department_windows.sql
+      aircraft_department_windows: {
+        Row: {
+          id: string;
+          aircraft_registration: string;
+          department: MaintenanceDepartment;
+          start_date: string;
+          end_date: string;
+          description: string | null;
+          source: GroundWindowSource;
+          source_document: string | null;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          aircraft_registration: string;
+          department: MaintenanceDepartment;
+          start_date: string;
+          end_date: string;
+          description?: string | null;
+          source?: GroundWindowSource;
+          source_document?: string | null;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["taskflow"]["Tables"]["aircraft_department_windows"]["Insert"]>;
         Relationships: [];
       };
       planning_board_settings: {
