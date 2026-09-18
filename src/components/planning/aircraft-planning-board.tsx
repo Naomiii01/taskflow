@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { AddGroundWindowDialog, type AircraftOption } from "@/components/planning/add-ground-window-dialog";
+import { AddDepartmentWindowDialog } from "@/components/planning/add-department-window-dialog";
 import { ImportGroundWindowsDialog } from "@/components/planning/import-ground-windows-dialog";
 import { GroundWindowChangeLogDialog } from "@/components/planning/ground-window-change-log-dialog";
 import {
@@ -23,6 +24,7 @@ import {
   type DailyCapacity,
   type MaintenanceDepartment,
   type PlanningBoardAircraft,
+  type PlanningBoardDepartmentWindow,
   type PlanningBoardWindow,
 } from "@/hooks/use-aircraft-planning";
 import { toIso, WEEKDAY_LABELS } from "@/lib/calendar-date-utils";
@@ -97,6 +99,10 @@ type EditTarget =
   | { mode: "create"; aircraftRegistration: string; station: string; dateIso: string }
   | { mode: "edit"; aircraftRegistration: string; window: PlanningBoardWindow };
 
+type DepartmentEditTarget =
+  | { mode: "create"; aircraftRegistration: string; dateIso: string }
+  | { mode: "edit"; aircraftRegistration: string; window: PlanningBoardDepartmentWindow };
+
 /** Capacity Warning 門檻設定——先用預設值，這裡可以自己調。閱覽者（canEdit
  * 為 false）還是可以打開看目前的門檻，只是欄位跟儲存按鈕會關閉。 */
 function CapacitySettingsPopover({ canEdit }: { canEdit: boolean }) {
@@ -160,6 +166,7 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
   // 維修計畫表匯入的部門區間（見 departmentWindowForDay）。
   const [departmentFilter, setDepartmentFilter] = React.useState<MaintenanceDepartment | undefined>(undefined);
   const [editTarget, setEditTarget] = React.useState<EditTarget | null>(null);
+  const [departmentEditTarget, setDepartmentEditTarget] = React.useState<DepartmentEditTarget | null>(null);
   const [importOpen, setImportOpen] = React.useState(false);
   const [changeLogOpen, setChangeLogOpen] = React.useState(false);
   // 機號欄下方「目前駐留地點」要看哪一天——點日期欄的標題可以換；換頁
@@ -231,6 +238,13 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
     setEditTarget({ mode: "edit", aircraftRegistration: a.aircraftRegistration, window: w });
   };
 
+  const openCreateDepartmentFor = (aircraftRegistration: string, dayIso: string) => {
+    setDepartmentEditTarget({ mode: "create", aircraftRegistration, dateIso: dayIso });
+  };
+  const openEditDepartmentFor = (aircraftRegistration: string, w: PlanningBoardDepartmentWindow) => {
+    setDepartmentEditTarget({ mode: "edit", aircraftRegistration, window: w });
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -259,6 +273,14 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
                 disabled={aircraftOptions.length === 0}
               >
                 <Plus className="size-3.5" /> 新增地面時間
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openCreateDepartmentFor("", startIso)}
+                disabled={aircraftOptions.length === 0}
+              >
+                <Plus className="size-3.5" /> 新增部門標示
               </Button>
             </>
           )}
@@ -461,17 +483,31 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
                         <div className="flex items-center gap-1.5">
                           <div className="font-medium">{a.aircraftRegistration}</div>
                           {currentDepartment && (
-                            <span
+                            <button
+                              type="button"
+                              disabled={!canEdit}
+                              onClick={() => canEdit && openEditDepartmentFor(a.aircraftRegistration, currentDepartment)}
                               title={currentDepartment.description ?? undefined}
                               className={cn(
                                 "rounded px-1 py-0.5 text-[9px] font-semibold leading-none",
                                 currentDepartment.department === "機坪"
                                   ? "bg-dept-ramp text-dept-ramp-foreground"
-                                  : "bg-dept-base text-dept-base-foreground"
+                                  : "bg-dept-base text-dept-base-foreground",
+                                canEdit && "cursor-pointer hover:opacity-80"
                               )}
                             >
                               {currentDepartment.department}
-                            </span>
+                            </button>
+                          )}
+                          {canEdit && !currentDepartment && (
+                            <button
+                              type="button"
+                              title="新增部門標示"
+                              onClick={() => openCreateDepartmentFor(a.aircraftRegistration, selectedDayIso)}
+                              className="rounded px-1 py-0.5 text-[9px] text-muted-foreground opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+                            >
+                              ＋部門
+                            </button>
                           )}
                         </div>
                         <div className="text-[10px] text-muted-foreground">{a.aircraftType} · {currentStationLabel}</div>
@@ -508,16 +544,20 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
                             )}
                           >
                             {showDepartmentLabel && (
-                              <div
+                              <button
+                                type="button"
+                                disabled={!canEdit}
+                                onClick={() => canEdit && openEditDepartmentFor(a.aircraftRegistration, department!)}
                                 className={cn(
-                                  "mb-0.5 truncate rounded px-1 py-0.5 text-[9px] font-semibold",
+                                  "mb-0.5 block w-full truncate rounded px-1 py-0.5 text-left text-[9px] font-semibold",
                                   department!.department === "機坪"
                                     ? "bg-dept-ramp text-dept-ramp-foreground"
-                                    : "bg-dept-base text-dept-base-foreground"
+                                    : "bg-dept-base text-dept-base-foreground",
+                                  canEdit && "cursor-pointer hover:opacity-80"
                                 )}
                               >
                                 {department!.department}{department!.description ? `｜${department!.description.split("+")[0]}` : ""}
-                              </div>
+                              </button>
                             )}
                             {residency && dayIso === residency.startDate && (
                               <div className="mb-0.5 truncate rounded bg-residency px-1 py-0.5 text-[9px] font-semibold text-residency-foreground">
@@ -600,6 +640,16 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
         defaultAircraftRegistration={editTarget?.mode === "create" ? editTarget.aircraftRegistration || undefined : undefined}
         defaultStation={editTarget?.mode === "create" ? editTarget.station : undefined}
         defaultDateIso={editTarget?.mode === "create" ? editTarget.dateIso : undefined}
+        readOnly={!canEdit}
+      />
+      <AddDepartmentWindowDialog
+        open={!!departmentEditTarget}
+        onOpenChange={(open) => !open && setDepartmentEditTarget(null)}
+        aircraftOptions={aircraftOptions}
+        editingWindow={departmentEditTarget?.mode === "edit" ? departmentEditTarget.window : null}
+        editingAircraftRegistration={departmentEditTarget?.mode === "edit" ? departmentEditTarget.aircraftRegistration : undefined}
+        defaultAircraftRegistration={departmentEditTarget?.mode === "create" ? departmentEditTarget.aircraftRegistration || undefined : undefined}
+        defaultDateIso={departmentEditTarget?.mode === "create" ? departmentEditTarget.dateIso : undefined}
         readOnly={!canEdit}
       />
       <ImportGroundWindowsDialog open={importOpen} onOpenChange={setImportOpen} />
