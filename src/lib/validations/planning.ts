@@ -197,3 +197,31 @@ export const groundWindowImportRowSchema = z.object({
   major_work_planned: z.string().trim().max(500).nullable().optional(),
 });
 export type GroundWindowImportRow = z.infer<typeof groundWindowImportRowSchema>;
+
+// --- 機坪／基地部門標示 (aircraft_department_windows) ----------------------------
+
+/** 一段「哪個部門正在執行這架飛機的工作」的日期區間，通常來自年度維修計畫表，
+ * 但臨時計畫（例如 HMV 提前/延後）常會變動，所以開放直接在畫面上編輯——不像
+ * ground window 用 datetime，這裡是純日期（YYYY-MM-DD），end_date 含當天。 */
+export const departmentWindowSchema = z
+  .object({
+    aircraft_registration: z.string().trim().min(1, "請選擇機號"),
+    department: z.enum(["機坪", "基地"]),
+    start_date: z.string().min(1, "請輸入起始日"),
+    end_date: z.string().min(1, "請輸入結束日"),
+    description: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((v) => v.end_date >= v.start_date, {
+    message: "結束日不能早於起始日",
+    path: ["end_date"],
+  });
+export type DepartmentWindowValues = z.infer<typeof departmentWindowSchema>;
+
+export const departmentWindowUpdateSchema = z.object({
+  aircraft_registration: z.string().trim().min(1).optional(),
+  department: z.enum(["機坪", "基地"]).optional(),
+  start_date: z.string().min(1).optional(),
+  end_date: z.string().min(1).optional(),
+  description: z.string().trim().max(500).nullable().optional(),
+});
+export type DepartmentWindowUpdateValues = z.infer<typeof departmentWindowUpdateSchema>;
