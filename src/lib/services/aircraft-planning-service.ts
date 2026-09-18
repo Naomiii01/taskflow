@@ -9,12 +9,14 @@ import type {
   Station,
   AircraftCurrentStatus,
   MajorWorkPlanningStatus,
+  MaintenanceDepartment,
   WorkShift,
 } from "@/types/database.types";
 import { STATIONS, STATION_LABELS } from "@/lib/constants";
 import * as groundWindowsRepo from "@/lib/repositories/aircraft-ground-windows-repository";
 import * as changeLogRepo from "@/lib/repositories/ground-window-change-log-repository";
 import * as residencyWindowsRepo from "@/lib/repositories/aircraft-residency-windows-repository";
+import * as departmentWindowsRepo from "@/lib/repositories/aircraft-department-windows-repository";
 import * as planningLookupsRepo from "@/lib/repositories/planning-lookups-repository";
 import * as tasksRepo from "@/lib/repositories/tasks-repository";
 import * as boardSettingsRepo from "@/lib/repositories/planning-board-settings-repository";
@@ -67,12 +69,25 @@ export type PlanningBoardResidencyWindow = {
   notes: string | null;
 };
 
+/** 機坪維修部／基地維修部——哪個部門正在執行這架飛機的工作，通常從年度維修
+ * 計畫表匯入。跟 PlanningBoardResidencyWindow 一樣是額外疊加的一層資訊，
+ * 跟每日地停格子分開來源、互不取代。end 是「含當天」（inclusive），跟
+ * residency window 的半開區間不同，請注意。 */
+export type PlanningBoardDepartmentWindow = {
+  id: string;
+  department: MaintenanceDepartment;
+  startDate: string;
+  endDate: string;
+  description: string | null;
+};
+
 export type PlanningBoardAircraft = {
   aircraftRegistration: string;
   aircraftType: AircraftType;
   homeStation: Station;
   windows: PlanningBoardWindow[];
   residencyWindows: PlanningBoardResidencyWindow[];
+  departmentWindows: PlanningBoardDepartmentWindow[];
 };
 
 export type DailyCapacity = {
@@ -194,6 +209,18 @@ function toBoardResidencyWindow(
   return { id: row.id, station: row.station, startDate: row.start_date, endDate: row.end_date, notes: row.notes };
 }
 
+function toBoardDepartmentWindow(
+  row: Awaited<ReturnType<typeof departmentWindowsRepo.findWindowsOverlapping>>[number]
+): PlanningBoardDepartmentWindow {
+  return {
+    id: row.id,
+    department: row.department,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    description: row.description,
+  };
+}
+
 /** Every calendar-day key a window touches within [start, end) — a window
  * spanning multiple days (an overnight, or a multi-day stay) counts toward
  * each day's capacity, not just its arrival day. `end` is exclusive (the day
@@ -272,15 +299,17 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
   const { todayKey, nextDayKey } = todayKeyAndNextDay();
   const { start: weekStart, end: weekEnd } = thisWeekBounds();
 
-  const [fleet, windows, todayWindows, weekWindows, residencyWindows, settings, unscheduledTaskCount] = await Promise.all([
-    planningLookupsRepo.findAllFleet(supabase),
-    groundWindowsRepo.findWindowsOverlapping(supabase, start, end),
-    groundWindowsRepo.findWindowsOverlapping(supabase, todayKey, nextDayKey),
-    groundWindowsRepo.findWindowsOverlapping(supabase, weekStart, weekEnd),
-    residencyWindowsRepo.findWindowsOverlapping(supabase, start, end),
-    boardSettingsRepo.getSettings(supabase),
-    tasksRepo.countUnscheduledTodoTasks(supabase),
-  ]);
+  const [fleet, windows, todayWindows, weekWindows, residencyWindows, departmentWindows, settings, unscheduledTaskCount] =
+    await Promise.all([
+      planningLookupsRepo.findAllFleet(supabase),
+      groundWindowsRepo.findWindowsOverlapping(supabase, start, end),
+      groundWindowsRepo.findWindowsOverlapping(supabase, todayKey, nextDayKey),
+      groundWindowsRepo.findWindowsOverlapping(supabase, weekStart, weekEnd),
+      residencyWindowsRepo.findWindowsOverlapping(supabase, start, end),
+      departmentWindowsRepo.findWindowsOverlapping(supabase, start, end),
+      boardSettingsRepo.getSettings(supabase),
+      tasksRepo.countUnscheduledTodoTasks(supabase),
+    ]);
 
   // Aircraft not yet delivered (still with the manufacturer) are hidden from
   // the whole board, not just the row list — their ground time shouldn't
@@ -308,6 +337,15 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
     else residencyWindowsByAircraft.set(r.aircraft_registration, [boardResidencyWindow]);
   }
 
+  const departmentWindowsByAircraft = new Map<string, PlanningBoardDepartmentWindow[]>();
+  for (const d of departmentWindows) {
+    if (!activeRegistrations.has(d.aircraft_registration)) continue;
+    const boardDepartmentWindow = toBoardDepartmentWindow(d);
+    const list = departmentWindowsByAircraft.get(d.aircraft_registration);
+    if (list) list.push(boardDepartmentWindow);
+    else departmentWindowsByAircraft.set(d.aircraft_registration, [boardDepartmentWindow]);
+  }
+
   const aircraft: PlanningBoardAircraft[] = fleet
     .filter((f) => f.status === "Active")
     .map((f) => ({
@@ -316,6 +354,7 @@ export async function getPlanningBoard(supabase: DB, start: string, end: string)
       homeStation: f.station,
       windows: windowsByAircraft.get(f.aircraft_registration) ?? [],
       residencyWindows: residencyWindowsByAircraft.get(f.aircraft_registration) ?? [],
+      departmentWindows: departmentWindowsByAircraft.get(f.aircraft_registration) ?? [],
     }));
 
   // Capacity Information — one bucket per visible day, tallied from every
