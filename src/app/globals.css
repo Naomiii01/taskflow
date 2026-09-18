@@ -73,6 +73,14 @@
   --day-stop: #5b8a94;
   --day-stop-foreground: #f8fbfb;
 
+  /* Aircraft Planning Board — 部門標示（機坪 vs 基地，哪個部門正在執行這架飛機
+     的工作）。機坪用深藍（呼應年度維修計畫表本身的深藍小格），基地用暖褐橘，
+     兩色故意跟上面駐留(紫)/日間長地停(藍綠)/過夜(綠)/工作(黃)都不同色系。 */
+  --dept-ramp: #3f6280;
+  --dept-ramp-foreground: #f4f8fb;
+  --dept-base: #b9793f;
+  --dept-base-foreground: #fbf5ee;
+
   --border: #e3ddd0;
   --input: #e3ddd0;
   --ring: #7c93a8;
@@ -142,6 +150,11 @@
   --day-stop: #7aacb6;
   --day-stop-foreground: #17262a;
 
+  --dept-ramp: #7fa3bd;
+  --dept-ramp-foreground: #16232c;
+  --dept-base: #d3a06e;
+  --dept-base-foreground: #2a1c0f;
+
   --border: rgba(236, 230, 218, 0.1);
   --input: rgba(236, 230, 218, 0.14);
   --ring: #93acc0;
@@ -195,6 +208,10 @@
   --color-residency-foreground: var(--residency-foreground);
   --color-day-stop: var(--day-stop);
   --color-day-stop-foreground: var(--day-stop-foreground);
+  --color-dept-ramp: var(--dept-ramp);
+  --color-dept-ramp-foreground: var(--dept-ramp-foreground);
+  --color-dept-base: var(--dept-base);
+  --color-dept-base-foreground: var(--dept-base-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
