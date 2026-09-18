@@ -34,12 +34,25 @@ export type PlanningBoardResidencyWindow = {
   notes: string | null;
 };
 
+export type MaintenanceDepartment = "機坪" | "基地";
+
+/** end 是「含當天」（inclusive）——跟 PlanningBoardResidencyWindow 的半開
+ * 區間不同，比對日期時要用 <= 而不是 <。 */
+export type PlanningBoardDepartmentWindow = {
+  id: string;
+  department: MaintenanceDepartment;
+  startDate: string;
+  endDate: string;
+  description: string | null;
+};
+
 export type PlanningBoardAircraft = {
   aircraftRegistration: string;
   aircraftType: string;
   homeStation: string;
   windows: PlanningBoardWindow[];
   residencyWindows: PlanningBoardResidencyWindow[];
+  departmentWindows: PlanningBoardDepartmentWindow[];
 };
 
 export type DailyCapacity = {
