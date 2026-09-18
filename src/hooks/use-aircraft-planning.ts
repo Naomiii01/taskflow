@@ -3,7 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import type { GroundWindowValues, GroundWindowUpdateValues, PlanningBoardSettingsValues } from "@/lib/validations/planning";
+import type {
+  GroundWindowValues,
+  GroundWindowUpdateValues,
+  PlanningBoardSettingsValues,
+  DepartmentWindowValues,
+  DepartmentWindowUpdateValues,
+} from "@/lib/validations/planning";
 
 export type PlanningBoardWindow = {
   id: string;
@@ -192,6 +198,46 @@ export function useDeleteGroundWindow() {
       queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
       queryClient.invalidateQueries({ queryKey: ["planning", "linkable-tasks"] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+// 機坪／基地部門標示——通常從年度維修計畫表匯入，但臨時計畫（例如 HMV 提前/
+// 延後）常會變動，所以也開放直接在畫面上新增／編輯／刪除。
+export function useCreateDepartmentWindow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (values: DepartmentWindowValues) =>
+      fetchJson<PlanningBoardDepartmentWindow>("/api/planning/department-windows", { method: "POST", body: JSON.stringify(values) }),
+    onSuccess: () => {
+      toast.success("部門標示已新增");
+      queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+export function useUpdateDepartmentWindow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id: string; values: DepartmentWindowUpdateValues }) =>
+      fetchJson<PlanningBoardDepartmentWindow>(`/api/planning/department-windows/${id}`, { method: "PATCH", body: JSON.stringify(values) }),
+    onSuccess: () => {
+      toast.success("部門標示已更新");
+      queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+export function useDeleteDepartmentWindow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/api/planning/department-windows/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("部門標示已刪除");
+      queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
