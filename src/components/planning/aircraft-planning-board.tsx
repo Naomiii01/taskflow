@@ -21,6 +21,7 @@ import {
   useUpdateBoardSettings,
   type BoardCapacitySettings,
   type DailyCapacity,
+  type MaintenanceDepartment,
   type PlanningBoardAircraft,
   type PlanningBoardWindow,
 } from "@/hooks/use-aircraft-planning";
@@ -155,6 +156,9 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
   const [aircraftTypeFilter, setAircraftTypeFilter] = React.useState<string | undefined>(undefined);
   // 依機隊主檔登記的固定基地場站篩選（homeStation）——不管當天實際停在哪裡。
   const [stationFilter, setStationFilter] = React.useState<string | undefined>(undefined);
+  // 依「現在（今天）在哪個部門手上」篩選——機坪維修部／基地維修部，來自年度
+  // 維修計畫表匯入的部門區間（見 departmentWindowForDay）。
+  const [departmentFilter, setDepartmentFilter] = React.useState<MaintenanceDepartment | undefined>(undefined);
   const [editTarget, setEditTarget] = React.useState<EditTarget | null>(null);
   const [importOpen, setImportOpen] = React.useState(false);
   const [changeLogOpen, setChangeLogOpen] = React.useState(false);
@@ -176,12 +180,21 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
 
   const { data: board, isLoading } = useAircraftPlanningBoard(startIso, endExclusiveIso);
 
+  // 「現在」是指真正的今天，不是看板目前捲到哪一頁——切換天/週/月或翻頁都不
+  // 該影響「哪架飛機現在在哪個部門手上」這個篩選的答案。
+  const todayIso = React.useMemo(() => toIso(new Date()), []);
+
   const aircraft = React.useMemo(() => {
     let list = board?.aircraft ?? [];
     if (aircraftTypeFilter) list = list.filter((a) => a.aircraftType === aircraftTypeFilter);
     if (stationFilter) list = list.filter((a) => a.homeStation === stationFilter);
+    if (departmentFilter) {
+      list = list.filter((a) =>
+        a.departmentWindows.some((d) => d.department === departmentFilter && d.startDate <= todayIso && todayIso <= d.endDate)
+      );
+    }
     return list;
-  }, [board, aircraftTypeFilter, stationFilter]);
+  }, [board, aircraftTypeFilter, stationFilter, departmentFilter, todayIso]);
 
   const aircraftOptions: AircraftOption[] = React.useMemo(
     () => (board?.aircraft ?? []).map((a) => ({ registration: a.aircraftRegistration, aircraftType: a.aircraftType, homeStation: a.homeStation })),
@@ -204,6 +217,12 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
   // 天），所以用 < 不是 <=。
   const residencyWindowForDay = (a: PlanningBoardAircraft, dayIso: string) =>
     a.residencyWindows.find((r) => r.startDate <= dayIso && dayIso < r.endDate);
+
+  // 機坪／基地部門標示——同樣是疊加顯示的第三種資訊，來源通常是年度維修計畫
+  // 表匯入。跟 residencyWindowForDay 不同，end_date 在這裡是「含當天」
+  // （inclusive），所以用 <= 而不是 <。
+  const departmentWindowForDay = (a: PlanningBoardAircraft, dayIso: string) =>
+    a.departmentWindows.find((d) => d.startDate <= dayIso && dayIso <= d.endDate);
 
   const openCreateFor = (a: PlanningBoardAircraft, dayIso: string) => {
     setEditTarget({ mode: "create", aircraftRegistration: a.aircraftRegistration, station: a.homeStation, dateIso: dayIso });
@@ -231,7 +250,12 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
               </Button>
               <Button
                 size="sm"
-                onClick={() => openCreateFor({ aircraftRegistration: "", aircraftType: "", homeStation: "TPE", windows: [], residencyWindows: [] }, startIso)}
+                onClick={() =>
+                  openCreateFor(
+                    { aircraftRegistration: "", aircraftType: "", homeStation: "TPE", windows: [], residencyWindows: [], departmentWindows: [] },
+                    startIso
+                  )
+                }
                 disabled={aircraftOptions.length === 0}
               >
                 <Plus className="size-3.5" /> 新增地面時間
@@ -307,7 +331,32 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
                   ))}
                 </SelectContent>
               </Select>
+
+              <Select
+                value={departmentFilter ?? ALL}
+                onValueChange={(v) => setDepartmentFilter(v === ALL ? undefined : (v as MaintenanceDepartment))}
+              >
+                <SelectTrigger className="w-[150px]" title="篩選「現在（今天）」在哪個部門手上">
+                  <SelectValue placeholder="部門" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>全部部門</SelectItem>
+                  <SelectItem value="機坪">現在在機坪</SelectItem>
+                  <SelectItem value="基地">現在在基地</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
+            <span className="font-medium text-foreground">部門標示：</span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block size-2.5 rounded-sm bg-dept-ramp" /> 機坪維修部（接送機LINE上作業）
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block size-2.5 rounded-sm bg-dept-base" /> 基地維修部（長地停重工）
+            </span>
+            <span>— 來源：年度維修計畫表匯入，日期區間為目視判讀，如有出入請直接告知確切日期。</span>
           </div>
 
           {isLoading && !board ? (
@@ -397,6 +446,7 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
                   {aircraft.map((a) => {
                     const currentWindow = windowForDay(a, selectedDayIso);
                     const currentResidency = residencyWindowForDay(a, selectedDayIso);
+                    const currentDepartment = departmentWindowForDay(a, selectedDayIso);
                     // 駐廠輪替表比從班表算出來的地停格子更權威（是排班單位另外
                     // 排定的），選到的那天如果剛好在駐留區間內，機號下方優先顯
                     // 示駐留場站，而不是當天班表算出來的場站。
@@ -408,7 +458,22 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
                     return (
                     <tr key={a.aircraftRegistration} className="group">
                       <td className="sticky left-0 z-10 border-b border-r bg-card p-2 align-top">
-                        <div className="font-medium">{a.aircraftRegistration}</div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="font-medium">{a.aircraftRegistration}</div>
+                          {currentDepartment && (
+                            <span
+                              title={currentDepartment.description ?? undefined}
+                              className={cn(
+                                "rounded px-1 py-0.5 text-[9px] font-semibold leading-none",
+                                currentDepartment.department === "機坪"
+                                  ? "bg-dept-ramp text-dept-ramp-foreground"
+                                  : "bg-dept-base text-dept-base-foreground"
+                              )}
+                            >
+                              {currentDepartment.department}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-muted-foreground">{a.aircraftType} · {currentStationLabel}</div>
                         {currentResidency ? (
                           <div className="text-[9px] font-medium text-residency">
@@ -421,12 +486,39 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
                       {dayIsos.map((dayIso) => {
                         const windows = a.windows.filter((w) => w.arrivalAt.slice(0, 10) <= dayIso && w.departureAt.slice(0, 10) >= dayIso);
                         const residency = residencyWindowForDay(a, dayIso);
+                        const department = departmentWindowForDay(a, dayIso);
+                        // 標籤只在區間第一天（或畫面可見範圍的第一天，如果這段
+                        // 區間在畫面捲動範圍之前就開始了）顯示一次，其餘天數只
+                        // 用背景色標示，跟駐留區間的顯示方式一致。
+                        const showDepartmentLabel = department && (dayIso === department.startDate || dayIso === dayIsos[0]);
                         return (
                           <td
                             key={dayIso}
-                            title={residency ? `駐留${STATION_LABELS[residency.station as keyof typeof STATION_LABELS] ?? residency.station}：${residency.startDate.slice(5)} – ${residency.endDate.slice(5)}` : undefined}
-                            className={cn("border-b border-l p-1 align-top", residency && "bg-residency/30")}
+                            title={
+                              department
+                                ? `${department.department}${department.description ? `：${department.description}` : ""}（${department.startDate.slice(5)} – ${department.endDate.slice(5)}）`
+                                : residency
+                                  ? `駐留${STATION_LABELS[residency.station as keyof typeof STATION_LABELS] ?? residency.station}：${residency.startDate.slice(5)} – ${residency.endDate.slice(5)}`
+                                  : undefined
+                            }
+                            className={cn(
+                              "border-b border-l p-1 align-top",
+                              residency && "bg-residency/30",
+                              department && (department.department === "機坪" ? "bg-dept-ramp/15" : "bg-dept-base/15")
+                            )}
                           >
+                            {showDepartmentLabel && (
+                              <div
+                                className={cn(
+                                  "mb-0.5 truncate rounded px-1 py-0.5 text-[9px] font-semibold",
+                                  department!.department === "機坪"
+                                    ? "bg-dept-ramp text-dept-ramp-foreground"
+                                    : "bg-dept-base text-dept-base-foreground"
+                                )}
+                              >
+                                {department!.department}{department!.description ? `｜${department!.description.split("+")[0]}` : ""}
+                              </div>
+                            )}
                             {residency && dayIso === residency.startDate && (
                               <div className="mb-0.5 truncate rounded bg-residency px-1 py-0.5 text-[9px] font-semibold text-residency-foreground">
                                 駐{STATION_LABELS[residency.station as keyof typeof STATION_LABELS] ?? residency.station}起
