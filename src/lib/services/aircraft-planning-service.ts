@@ -20,7 +20,13 @@ import * as departmentWindowsRepo from "@/lib/repositories/aircraft-department-w
 import * as planningLookupsRepo from "@/lib/repositories/planning-lookups-repository";
 import * as tasksRepo from "@/lib/repositories/tasks-repository";
 import * as boardSettingsRepo from "@/lib/repositories/planning-board-settings-repository";
-import type { GroundWindowValues, GroundWindowUpdateValues, PlanningBoardSettingsValues } from "@/lib/validations/planning";
+import type {
+  GroundWindowValues,
+  GroundWindowUpdateValues,
+  PlanningBoardSettingsValues,
+  DepartmentWindowValues,
+  DepartmentWindowUpdateValues,
+} from "@/lib/validations/planning";
 
 type DB = SupabaseClient<Database, "taskflow">;
 
@@ -523,6 +529,39 @@ export async function updateGroundWindow(supabase: DB, id: string, values: Groun
 
 export async function deleteGroundWindow(supabase: DB, id: string) {
   await groundWindowsRepo.deleteWindow(supabase, id);
+}
+
+// --- 機坪／基地部門標示 (aircraft_department_windows) ----------------------------
+// 通常從年度維修計畫表匯入，但臨時計畫（例如 HMV 提前/延後）常會變動，所以
+// 開放直接編輯——跟 ground window 一樣走 service → repository，只是這裡的
+// 日期是純日期（YYYY-MM-DD），end_date 含當天。
+
+export async function createDepartmentWindow(supabase: DB, values: DepartmentWindowValues, currentUserId: string) {
+  const row = await departmentWindowsRepo.createWindow(supabase, {
+    aircraft_registration: values.aircraft_registration,
+    department: values.department,
+    start_date: values.start_date,
+    end_date: values.end_date,
+    description: values.description || null,
+    source: "manual",
+    created_by: currentUserId,
+  });
+  return toBoardDepartmentWindow(row);
+}
+
+export async function updateDepartmentWindow(supabase: DB, id: string, values: DepartmentWindowUpdateValues) {
+  const patch: Database["taskflow"]["Tables"]["aircraft_department_windows"]["Update"] = {};
+  if (values.aircraft_registration !== undefined) patch.aircraft_registration = values.aircraft_registration;
+  if (values.department !== undefined) patch.department = values.department;
+  if (values.start_date !== undefined) patch.start_date = values.start_date;
+  if (values.end_date !== undefined) patch.end_date = values.end_date;
+  if (values.description !== undefined) patch.description = values.description || null;
+  const row = await departmentWindowsRepo.updateWindow(supabase, id, patch);
+  return toBoardDepartmentWindow(row);
+}
+
+export async function deleteDepartmentWindow(supabase: DB, id: string) {
+  await departmentWindowsRepo.deleteWindow(supabase, id);
 }
 
 // --- Search Center: keyword search across ground windows --------------------
