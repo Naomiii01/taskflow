@@ -48,6 +48,13 @@ export const checklistItemUpdateSchema = z.object({
 });
 export type ChecklistItemUpdateValues = z.infer<typeof checklistItemUpdateSchema>;
 
+// --- Monthly Checklist (Planning Timeline 完成勾選) -----------------------------
+
+export const monthlyChecklistItemUpdateSchema = z.object({
+  is_completed: z.boolean(),
+});
+export type MonthlyChecklistItemUpdateValues = z.infer<typeof monthlyChecklistItemUpdateSchema>;
+
 // --- Waiting Center ------------------------------------------------------------
 
 export const waitingItemSchema = z.object({

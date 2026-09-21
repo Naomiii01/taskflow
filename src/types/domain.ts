@@ -245,6 +245,19 @@ export type DailyChecklistWithItems = Tables<"daily_checklists"> & {
   items: DailyChecklistItem[];
 };
 
+/** Monthly Center / Planning Timeline 完成勾選 — one row per
+ * PLANNING_MONTHLY_MILESTONES item (item_key = day-of-month as text) for the
+ * current calendar month. `day`/`isPast`/`isToday` are derived client-side. */
+export type MonthlyChecklistItem = Tables<"monthly_checklist_items"> & {
+  day: number;
+  isPast: boolean;
+  isToday: boolean;
+};
+
+export type MonthlyChecklistWithItems = Tables<"monthly_checklists"> & {
+  items: MonthlyChecklistItem[];
+};
+
 export type WaitingColorLevel = "green" | "yellow" | "orange" | "red";
 
 export type WaitingItemWithTask = Tables<"waiting_items"> & {
@@ -289,6 +302,11 @@ export type PlanningKpis = {
   overdueCount: number;
   supervisorCompletionRate: number;
   monthlyPlanCompletionRate: number;
+  /** 直接以任務「站別」欄位算出的完成率（站別是複選，一件任務可能同時算進
+   * RMQ 跟 KHH）— 跟舊版讀「專案代號剛好叫 RMQ/KHH 的專案」不同，見
+   * planning-kpi-service.ts。 */
+  rmqCompletionRate: number;
+  khhCompletionRate: number;
   projectCompletion: { code: string; name: string; completionRate: number }[];
 };
 

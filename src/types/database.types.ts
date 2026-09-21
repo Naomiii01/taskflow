@@ -1226,6 +1226,59 @@ export interface Database {
           },
         ];
       };
+      monthly_checklists: {
+        Row: {
+          id: string;
+          planning_month: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          planning_month: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["taskflow"]["Tables"]["monthly_checklists"]["Insert"]>;
+        Relationships: [];
+      };
+      monthly_checklist_items: {
+        Row: {
+          id: string;
+          checklist_id: string;
+          item_key: string;
+          item_label: string;
+          is_completed: boolean;
+          completed_by: string | null;
+          completed_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          checklist_id: string;
+          item_key: string;
+          item_label: string;
+          is_completed?: boolean;
+          completed_by?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["taskflow"]["Tables"]["monthly_checklist_items"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "monthly_checklist_items_checklist_id_fkey";
+            columns: ["checklist_id"];
+            isOneToOne: false;
+            referencedRelation: "monthly_checklists";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "monthly_checklist_items_completed_by_fkey";
+            columns: ["completed_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       waiting_items: {
         Row: {
           id: string;

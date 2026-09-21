@@ -4,14 +4,17 @@ import { CalendarClock } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDailyBriefing } from "@/hooks/use-planning";
+import { useMonthlyChecklist, useUpdateMonthlyChecklistItem } from "@/hooks/use-planning";
 import { cn } from "@/lib/utils";
 
 /** Monthly Center / Planning Timeline: 每月重要節點 — 1日短天期整理/額外工單整理、
- * 15日修管月計畫整理、20日長工時/人力/工期安排完成期限. */
+ * 15日修管月計畫整理、20日長工時/人力/工期安排完成期限。每項可打勾標記完成，
+ * 完成後「已過期限」提示就會消失，方便記得該月還有哪些節點沒處理完。 */
 export function PlanningTimeline() {
-  const { data: briefing, isLoading } = useDailyBriefing();
+  const { data: checklist, isLoading } = useMonthlyChecklist();
+  const updateItem = useUpdateMonthlyChecklistItem();
 
   return (
     <Card>
@@ -22,27 +25,35 @@ export function PlanningTimeline() {
       </CardHeader>
       <CardContent>
         {isLoading && <Skeleton className="h-20 w-full" />}
-        {briefing && (
+        {checklist && (
           <ol className="flex flex-col gap-2">
-            {briefing.thisMonthMilestones.map((m) => (
+            {checklist.items.map((m) => (
               <li
-                key={m.day}
+                key={m.id}
                 className={cn(
                   "flex items-center gap-3 rounded-xl border border-border/70 p-3 text-sm transition-colors",
-                  m.isToday && "border-primary/40 bg-primary/8 shadow-soft"
+                  m.isToday && !m.is_completed && "border-primary/40 bg-primary/8 shadow-soft"
                 )}
               >
+                <Checkbox
+                  checked={m.is_completed}
+                  onCheckedChange={(checked) => updateItem.mutate({ id: m.id, is_completed: checked === true })}
+                  aria-label={`標記「${m.item_label}」完成`}
+                />
                 <span
                   className={cn(
                     "flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                    m.isToday ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                    m.isToday && !m.is_completed ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                   )}
                 >
                   {m.day}日
                 </span>
-                <span className="flex-1">{m.label}</span>
-                {m.isToday && <Badge>今天</Badge>}
-                {m.isPast && !m.isToday && <Badge variant="outline">已過期限</Badge>}
+                <span className={cn("flex-1", m.is_completed && "text-muted-foreground line-through")}>
+                  {m.item_label}
+                </span>
+                {m.is_completed && <Badge variant="success">已完成</Badge>}
+                {!m.is_completed && m.isToday && <Badge>今天</Badge>}
+                {!m.is_completed && m.isPast && !m.isToday && <Badge variant="outline">已過期限</Badge>}
               </li>
             ))}
           </ol>
