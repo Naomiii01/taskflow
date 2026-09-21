@@ -2,8 +2,9 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { Database } from "@/types/database.types";
+import type { Database, Station } from "@/types/database.types";
 import * as tasksRepo from "@/lib/repositories/tasks-repository";
+import type { PlanningTaskSnapshot } from "@/lib/repositories/tasks-repository";
 import * as waitingRepo from "@/lib/repositories/waiting-repository";
 import * as supervisorRepo from "@/lib/repositories/supervisor-repository";
 import { listProjectSummaries } from "@/lib/services/project-service";
@@ -15,6 +16,17 @@ type DB = SupabaseClient<Database, "taskflow">;
 function currentPlanningMonth() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** RMQ完成率/KHH完成率：直接算「站別欄位包含這個站」的任務裡，已完成的比例。
+ * 站別是複選（一件任務可能同時涵蓋 RMQ 跟 KHH），所以用 includes 而非相等；
+ * 這跟舊版讀「專案中心裡代號剛好叫 RMQ/KHH 的專案」是兩回事，後者需要另外
+ * 手動建立同名專案才會有資料，對站別這種任務本來就有的欄位來說沒有必要。 */
+function stationCompletionRate(tasks: PlanningTaskSnapshot[], station: Station) {
+  const matching = tasks.filter((t) => t.station.includes(station));
+  return matching.length
+    ? Math.round((matching.filter((t) => t.status === "Completed").length / matching.length) * 100)
+    : 0;
 }
 
 /**
@@ -59,6 +71,8 @@ export async function computePlanningKpis(supabase: DB): Promise<PlanningKpis> {
     overdueCount,
     supervisorCompletionRate,
     monthlyPlanCompletionRate,
+    rmqCompletionRate: stationCompletionRate(tasks, "RMQ"),
+    khhCompletionRate: stationCompletionRate(tasks, "KHH"),
     projectCompletion: projectSummaries.map((p) => ({ code: p.code, name: p.name, completionRate: p.completionRate })),
   };
 }
