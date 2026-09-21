@@ -1,8 +1,10 @@
 "use client";
 
+import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { createClient } from "@/lib/supabase/client";
 import type {
   GroundWindowValues,
   GroundWindowUpdateValues,
@@ -159,6 +161,34 @@ export function useAircraftPlanningBoard(start: string, end: string) {
   });
 }
 
+/**
+ * Aircraft Planning Board 即時同步：這是登入後的預設首頁、也是盯最久的畫
+ * 面，所以不用輪詢，直接訂閱 Supabase Realtime——只要地停時間／駐廠輪替／
+ * 部門標示有任何異動（不管是誰、從哪裡改的，包含班表匯入），幾乎立刻重新
+ * 整理畫面，不用等輪詢間隔或手動重新整理。掛在 AircraftPlanningBoard 元件
+ * 裡一次即可，跟通知鈴鐺的 useNotificationsRealtime 是同一種模式。
+ */
+export function useAircraftBoardRealtime(enabled: boolean = true) {
+  const queryClient = useQueryClient();
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    const supabase = createClient();
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ["planning", "aircraft-board"] });
+
+    const channel = supabase
+      .channel("aircraft-board-realtime")
+      .on("postgres_changes", { event: "*", schema: "taskflow", table: "aircraft_ground_windows" }, invalidate)
+      .on("postgres_changes", { event: "*", schema: "taskflow", table: "aircraft_residency_windows" }, invalidate)
+      .on("postgres_changes", { event: "*", schema: "taskflow", table: "aircraft_department_windows" }, invalidate)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [enabled, queryClient]);
+}
+
 export function useCreateGroundWindow() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -276,9 +306,10 @@ export function useLinkableTasks() {
 export function useImportGroundWindows() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: ({ file, alreadyLocal }: { file: File; alreadyLocal?: boolean }) => {
       const form = new FormData();
       form.set("file", file);
+      if (alreadyLocal) form.set("already_local", "true");
       return fetchJson<ImportResult>("/api/planning/ground-windows/import", { method: "POST", body: form });
     },
     onSuccess: (result) => {

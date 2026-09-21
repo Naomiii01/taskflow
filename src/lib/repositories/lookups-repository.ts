@@ -29,6 +29,20 @@ export async function findAdmins(supabase: DB) {
   return data ?? [];
 }
 
+/** Everyone who can edit the Aircraft Planning Board — Admins (always
+ * editors, regardless of planning_board_role) plus anyone explicitly set as
+ * an "editor". Used to fan out schedule-change notifications after a班表
+ * re-import so the whole planning team sees affected windows, not just
+ * whoever happened to run the import. */
+export async function findPlanningBoardEditors(supabase: DB) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, name, email")
+    .or("role.eq.Admin,planning_board_role.eq.editor");
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function findDepartmentWorkload(supabase: DB) {
   const { data, error } = await supabase
     .from("tasks")

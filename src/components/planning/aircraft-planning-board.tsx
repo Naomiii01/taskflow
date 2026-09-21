@@ -18,6 +18,7 @@ import { ImportGroundWindowsDialog } from "@/components/planning/import-ground-w
 import { GroundWindowChangeLogDialog } from "@/components/planning/ground-window-change-log-dialog";
 import {
   useAircraftPlanningBoard,
+  useAircraftBoardRealtime,
   useBoardSettings,
   useUpdateBoardSettings,
   type BoardCapacitySettings,
@@ -186,6 +187,7 @@ export function AircraftPlanningBoard({ canEdit = true }: { canEdit?: boolean } 
   }, [dayIsos]);
 
   const { data: board, isLoading } = useAircraftPlanningBoard(startIso, endExclusiveIso);
+  useAircraftBoardRealtime();
 
   // 「現在」是指真正的今天，不是看板目前捲到哪一頁——切換天/週/月或翻頁都不
   // 該影響「哪架飛機現在在哪個部門手上」這個篩選的答案。

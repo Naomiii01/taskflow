@@ -20,6 +20,8 @@ import * as departmentWindowsRepo from "@/lib/repositories/aircraft-department-w
 import * as planningLookupsRepo from "@/lib/repositories/planning-lookups-repository";
 import * as tasksRepo from "@/lib/repositories/tasks-repository";
 import * as boardSettingsRepo from "@/lib/repositories/planning-board-settings-repository";
+import * as lookupsRepo from "@/lib/repositories/lookups-repository";
+import * as notificationsRepo from "@/lib/repositories/notifications-repository";
 import type {
   GroundWindowValues,
   GroundWindowUpdateValues,
@@ -735,6 +737,9 @@ const HEADER_ALIASES: Record<string, keyof ImportedRow> = {
   // pushes back; for a ground/maintenance pseudo-flight (Dep === Arr) it's
   // when the aircraft goes down for that event, i.e. our window's start.
   "std": "arrival_at",
+  // "LTD" (Local Time of Departure) — same role as STD, just a different
+  // export's column name (already local time, not Zulu — see alreadyLocal).
+  "ltd": "arrival_at",
   "離站時間": "departure_at",
   "離站": "departure_at",
   "departure": "departure_at",
@@ -742,6 +747,8 @@ const HEADER_ALIASES: Record<string, keyof ImportedRow> = {
   // "STA" (Scheduled Time of Arrival) — the mirror of STD: for a ground event
   // this is when the aircraft comes back up, i.e. our window's end.
   "sta": "departure_at",
+  // "LTA" (Local Time of Arrival) — same role as STA, LTD's counterpart.
+  "lta": "departure_at",
   "備註": "notes",
   "notes": "notes",
   "remark": "notes",
@@ -800,13 +807,20 @@ function zuluToTaipeiLocal(zuluIso: string): string {
 /** Accepts an Excel serial date, a JS Date (exceljs already returns UTC-based
  * Date objects for date-formatted cells), or a "YYYY-MM-DD HH:mm"-shaped
  * string — and always returns a plain (no-timezone-shift) ISO string, same
- * convention as the manual entry dialog's datetime-local input, after
- * shifting the source Zulu time to Taipei local. */
-function parseDateTimeCell(raw: unknown): string | null {
-  if (raw instanceof Date) return zuluToTaipeiLocal(raw.toISOString());
+ * convention as the manual entry dialog's datetime-local input.
+ *
+ * `alreadyLocal` — most raw ops exports (STD/STA) are Zulu per standard
+ * aviation-ops convention, so by default this shifts +8h to Taipei local
+ * before entering the "plain digits" convention (see zuluToTaipeiLocal).
+ * Some exports (e.g. an LTD/LTA-labelled file) already carry Taipei local
+ * time — pass `alreadyLocal: true` for those and the shift is skipped, since
+ * applying it again would silently push every time 8 hours into the future. */
+function parseDateTimeCell(raw: unknown, alreadyLocal = false): string | null {
+  const toStored = (iso: string) => (alreadyLocal ? iso : zuluToTaipeiLocal(iso));
+  if (raw instanceof Date) return toStored(raw.toISOString());
   if (typeof raw === "number") {
     const ms = Math.round((raw - 25569) * 86400 * 1000); // Excel serial → epoch
-    return zuluToTaipeiLocal(new Date(ms).toISOString());
+    return toStored(new Date(ms).toISOString());
   }
   if (typeof raw === "string") {
     const s = raw.trim();
@@ -815,7 +829,7 @@ function parseDateTimeCell(raw: unknown): string | null {
     if (!m) return null;
     const [, y, mo, d, h, mi] = m;
     const rawIso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi}:00.000Z`;
-    return zuluToTaipeiLocal(rawIso);
+    return toStored(rawIso);
   }
   return null;
 }
@@ -836,7 +850,7 @@ function cellToString(raw: unknown): string {
  * as Big5 instead of trusting the file's stated MIME type. */
 function decodeFileText(buffer: Buffer): string {
   const utf8Text = buffer.toString("utf-8");
-  if (!utf8Text.includes(" ")) return utf8Text;
+  if (!utf8Text.includes("�")) return utf8Text;
   try {
     return new TextDecoder("big5").decode(buffer);
   } catch {
@@ -904,7 +918,11 @@ export async function parseImportFile(
   fileBuffer: Buffer,
   mimeType: string,
   fileName: string,
-  longHaulRegistrations: ReadonlySet<string> = new Set()
+  longHaulRegistrations: ReadonlySet<string> = new Set(),
+  // 大部分匯出檔（STD/STA）是 Zulu，預設會轉台北時間；有些匯出（例如 LTD/LTA
+  // 命名的檔案）本身已經是台北當地時間，這種就要傳 true，跳過轉換，否則會
+  // 多轉一次、把每個時間都往後多推 8 小時。
+  alreadyLocal = false
 ): Promise<ImportedRow[]> {
   const isCsv = mimeType === "text/csv" || fileName.toLowerCase().endsWith(".csv");
 
@@ -954,7 +972,7 @@ export async function parseImportFile(
       if (!field) return;
       const raw = row[i];
       if (field === "arrival_at" || field === "departure_at") {
-        parsed[field] = parseDateTimeCell(raw);
+        parsed[field] = parseDateTimeCell(raw, alreadyLocal);
       } else if (field === "aircraft_registration") {
         parsed.aircraft_registration = cellToString(raw).toUpperCase();
       } else if (field === "station") {
@@ -970,7 +988,9 @@ export async function parseImportFile(
 
   if (arrivalStationColumnIndex === -1) return parsedRows;
 
-  return deriveOpsExportGroundWindows(headerRow, dataRows, arrivalStationColumnIndex, longHaulRegistrations) ?? parsedRows;
+  return (
+    deriveOpsExportGroundWindows(headerRow, dataRows, arrivalStationColumnIndex, longHaulRegistrations, alreadyLocal) ?? parsedRows
+  );
 }
 
 /** Registrations for the long-haul fleet (A359/A351), normalized the same
@@ -1029,12 +1049,15 @@ function deriveOpsExportGroundWindows(
   headerRow: unknown[],
   dataRows: unknown[][],
   arrivalStationColumnIndex: number,
-  longHaulRegistrations: ReadonlySet<string>
+  longHaulRegistrations: ReadonlySet<string>,
+  alreadyLocal = false
 ): ImportedRow[] | null {
   const registrationIdx = findColumnIndex(headerRow, ["機號", "aircraft_registration", "registration", "aircraft"]);
   const depIdx = findColumnIndex(headerRow, ["dep"]);
-  const stdIdx = findColumnIndex(headerRow, ["std"]);
-  const staIdx = findColumnIndex(headerRow, ["sta"]);
+  // STD/STA (Zulu) or LTD/LTA (already Taipei local, see alreadyLocal) — same
+  // role either way: STD/LTD is when this leg starts, STA/LTA is when it ends.
+  const stdIdx = findColumnIndex(headerRow, ["std", "ltd"]);
+  const staIdx = findColumnIndex(headerRow, ["sta", "lta"]);
   if (registrationIdx === -1 || depIdx === -1 || stdIdx === -1 || staIdx === -1) return null;
   const flightIdx = findColumnIndex(headerRow, ["flight"]);
   const remarkIdx = findColumnIndex(headerRow, ["check remark", "計畫大工項目", "大工項目", "major_work_planned", "major work"]);
@@ -1048,8 +1071,8 @@ function deriveOpsExportGroundWindows(
         registration,
         depStation,
         arrStation,
-        std: parseDateTimeCell(row[stdIdx]),
-        sta: parseDateTimeCell(row[staIdx]),
+        std: parseDateTimeCell(row[stdIdx], alreadyLocal),
+        sta: parseDateTimeCell(row[staIdx], alreadyLocal),
         isGroundEvent: !!depStation && depStation === arrStation,
         flightCode: flightIdx === -1 ? "" : cellToString(row[flightIdx]),
         remark: remarkIdx === -1 ? null : cellToString(row[remarkIdx]) || null,
@@ -1355,6 +1378,37 @@ export async function importGroundWindows(supabase: DB, rows: ImportedRow[], cur
     const chunk = toInsert.slice(i, i + CHUNK_SIZE);
     const created = await groundWindowsRepo.createWindows(supabase, chunk);
     imported += created.length;
+  }
+
+  // 讓沒有親自跑匯入的人也知道有已排工的地停時間被動到了——之前只有匯入的
+  // 當下用 toast 提醒操作者自己，其他規劃人員得自己點進機隊看板才會發現。
+  // 站內通知中心本來就有即時推播（見 useNotificationsRealtime），這裡直接
+  // 接上去，不用另外蓋新的提醒管道。
+  if (affectedPlanWindows.length > 0) {
+    const editors = await lookupsRepo.findPlanningBoardEditors(supabase);
+    const recipients = editors.filter((u) => u.id !== currentUserId);
+    if (recipients.length > 0) {
+      const affectedRegs = Array.from(new Set(affectedPlanWindows.map((w) => w.aircraftRegistration)));
+      const regsPreview =
+        affectedRegs.length > 5
+          ? `${affectedRegs.slice(0, 5).join("、")} 等 ${affectedRegs.length} 架`
+          : affectedRegs.join("、");
+      const orphanedCount = affectedPlanWindows.filter((w) => w.changeType === "orphaned").length;
+      const detail =
+        orphanedCount > 0
+          ? `其中 ${orphanedCount} 筆在新班表裡完全找不到對應班次，需要人工確認`
+          : "時間都因為新班表而異動";
+      await notificationsRepo.createNotifications(
+        supabase,
+        recipients.map((u) => ({
+          user_id: u.id,
+          related_task_id: null,
+          type: "schedule_changed" as Database["taskflow"]["Tables"]["notifications"]["Insert"]["type"],
+          title: `📋 班表匯入：${affectedPlanWindows.length} 筆已排工地停時間有異動`,
+          message: `${regsPreview}的地停時間有異動，${detail}，請至 Aircraft Planning Board 確認。`,
+        }))
+      );
+    }
   }
 
   return { imported, skipped, affectedPlanWindows };

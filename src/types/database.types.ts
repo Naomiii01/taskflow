@@ -34,7 +34,8 @@ export type NotificationType =
   | "document_processed"
   | "escalation"
   | "daily_summary"
-  | "weekly_summary";
+  | "weekly_summary"
+  | "schedule_changed";
 
 export type ProcessingStatus = "pending" | "processing" | "completed" | "failed" | "skipped";
 

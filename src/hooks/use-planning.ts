@@ -27,12 +27,20 @@ async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
 
 type ChecklistWithRate = DailyChecklistWithItems & { completionRate: number };
 
+// 儀表板即時度（混合做法）：多數清單/KPI 頁面用簡單輪詢，每分鐘自動重新
+// 抓一次資料，畫面會自己更新、不用手動重新整理——只在分頁還開著、瀏覽器
+// 分頁在前景時才會抓（TanStack Query 預設行為），不會一直在背景空轉。真正
+// 逐秒即時的 Supabase Realtime 留給最常盯著看的機隊看板（見
+// useAircraftBoardRealtime），這裡不需要到那麼即時。
+const DASHBOARD_POLL_INTERVAL_MS = 60_000;
+
 // --- Today Center: Daily Checklist ------------------------------------------
 
 export function useTodayChecklist() {
   return useQuery({
     queryKey: ["planning", "checklist", "today"],
     queryFn: () => fetchJson<ChecklistWithRate>("/api/planning/checklist"),
+    refetchInterval: DASHBOARD_POLL_INTERVAL_MS,
   });
 }
 
@@ -48,20 +56,39 @@ export function useUpdateChecklistItem() {
 
 // --- Monthly Center: Planning Timeline 完成勾選 -------------------------------
 
+const MONTHLY_CHECKLIST_KEY = ["planning", "monthly-checklist"];
+
 export function useMonthlyChecklist() {
   return useQuery({
-    queryKey: ["planning", "monthly-checklist"],
+    queryKey: MONTHLY_CHECKLIST_KEY,
     queryFn: () => fetchJson<MonthlyChecklistWithItems>("/api/planning/monthly-checklist"),
+    refetchInterval: DASHBOARD_POLL_INTERVAL_MS,
   });
 }
 
+/** Optimistic: 打勾當下就立刻顯示完成/取消，不用等伺服器回應——背景仍會送出
+ * PATCH 並在完成後跟伺服器同步，失敗的話會自動退回原狀並跳出錯誤提示。 */
 export function useUpdateMonthlyChecklistItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, is_completed }: { id: string; is_completed: boolean }) =>
       fetchJson(`/api/planning/monthly-checklist-items/${id}`, { method: "PATCH", body: JSON.stringify({ is_completed }) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["planning", "monthly-checklist"] }),
-    onError: (err: Error) => toast.error(err.message),
+    onMutate: async ({ id, is_completed }) => {
+      await queryClient.cancelQueries({ queryKey: MONTHLY_CHECKLIST_KEY });
+      const previous = queryClient.getQueryData<MonthlyChecklistWithItems>(MONTHLY_CHECKLIST_KEY);
+      if (previous) {
+        queryClient.setQueryData<MonthlyChecklistWithItems>(MONTHLY_CHECKLIST_KEY, {
+          ...previous,
+          items: previous.items.map((item) => (item.id === id ? { ...item, is_completed } : item)),
+        });
+      }
+      return { previous };
+    },
+    onError: (err: Error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(MONTHLY_CHECKLIST_KEY, context.previous);
+      toast.error(err.message);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: MONTHLY_CHECKLIST_KEY }),
   });
 }
 
@@ -71,6 +98,7 @@ export function useWaitingItems(status?: string) {
   return useQuery({
     queryKey: ["planning", "waiting", status ?? "Waiting"],
     queryFn: () => fetchJson<WaitingItemWithTask[]>(`/api/planning/waiting?status=${status ?? "Waiting"}`),
+    refetchInterval: DASHBOARD_POLL_INTERVAL_MS,
   });
 }
 
@@ -109,6 +137,7 @@ export function useSupervisorTasks(status?: string) {
   return useQuery({
     queryKey: ["planning", "supervisor-tasks", status ?? "open"],
     queryFn: () => fetchJson<SupervisorTaskWithUsers[]>(`/api/planning/supervisor-tasks${status ? `?status=${status}` : ""}`),
+    refetchInterval: DASHBOARD_POLL_INTERVAL_MS,
   });
 }
 
@@ -147,6 +176,7 @@ export function useProjectSummaries() {
   return useQuery({
     queryKey: ["planning", "projects"],
     queryFn: () => fetchJson<ProjectSummary[]>("/api/planning/projects"),
+    refetchInterval: DASHBOARD_POLL_INTERVAL_MS,
   });
 }
 
@@ -156,6 +186,7 @@ export function usePlanningKpis() {
   return useQuery({
     queryKey: ["planning", "kpi"],
     queryFn: () => fetchJson<PlanningKpis>("/api/planning/kpi"),
+    refetchInterval: DASHBOARD_POLL_INTERVAL_MS,
   });
 }
 
@@ -163,6 +194,7 @@ export function usePlanningAnalytics() {
   return useQuery({
     queryKey: ["planning", "analytics"],
     queryFn: () => fetchJson<PlanningAnalytics>("/api/planning/analytics"),
+    refetchInterval: DASHBOARD_POLL_INTERVAL_MS,
   });
 }
 

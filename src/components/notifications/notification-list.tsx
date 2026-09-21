@@ -12,6 +12,7 @@ import {
   ListTodo,
   Megaphone,
   PencilLine,
+  PlaneTakeoff,
   Trash2,
   TrendingUp,
 } from "lucide-react";
@@ -39,6 +40,7 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   escalation: Megaphone,
   daily_summary: CalendarClock,
   weekly_summary: CalendarClock,
+  schedule_changed: PlaneTakeoff,
 };
 
 export function NotificationList({

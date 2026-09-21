@@ -157,6 +157,7 @@ const TOAST_KIND: Record<NotificationType, "success" | "warning" | "error" | "in
   escalation: "error",
   daily_summary: "info",
   weekly_summary: "info",
+  schedule_changed: "warning",
 };
 
 /**

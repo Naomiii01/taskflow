@@ -186,6 +186,7 @@ export const NOTIFICATION_TYPES: NotificationType[] = [
   "escalation",
   "daily_summary",
   "weekly_summary",
+  "schedule_changed",
 ];
 
 export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
@@ -200,6 +201,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   escalation: "升級通知",
   daily_summary: "每日摘要",
   weekly_summary: "每週摘要",
+  schedule_changed: "班表異動",
 };
 
 export const NOTIFICATION_TYPE_BADGE: Record<
@@ -217,6 +219,7 @@ export const NOTIFICATION_TYPE_BADGE: Record<
   escalation: "destructive",
   daily_summary: "outline",
   weekly_summary: "outline",
+  schedule_changed: "warning",
 };
 
 /** Escalation levels: how many days of overdue-ness trigger each notification tier. */
