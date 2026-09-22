@@ -7,6 +7,9 @@ import { PermissionError } from "@/lib/errors";
 import * as aircraftPlanningService from "@/lib/services/aircraft-planning-service";
 
 export const runtime = "nodejs";
+// 大檔案（幾千列）逐列比對＋寫入異動紀錄需要一點時間，預設的伺服器逾時
+// 太短可能會在處理到一半時被中斷、前端完全沒收到任何回應。拉長到 120 秒。
+export const maxDuration = 120;
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = [".xlsx", ".csv"];
@@ -30,11 +33,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "檔案太大，請控制在 10MB 以內" }, { status: 400 });
     }
 
+    // 大部分匯出檔（STD/STA）是 Zulu 時間，預設會轉台北時間；有些匯出（例如
+    // LTD/LTA 命名的檔案）本身已經是台北當地時間，這種要勾選「時間已經是台北
+    // 當地時間」跳過轉換，否則會多轉一次、把每個時間都往後多推 8 小時。
+    const alreadyLocal = form.get("already_local") === "true";
+
     const supabase = await createClient();
     const longHaulRegistrations = await aircraftPlanningService.findLongHaulRegistrations(supabase);
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const rows = await aircraftPlanningService.parseImportFile(buffer, file.type, file.name, longHaulRegistrations);
+    const rows = await aircraftPlanningService.parseImportFile(buffer, file.type, file.name, longHaulRegistrations, alreadyLocal);
     if (rows.length === 0) {
       return NextResponse.json({ error: "檔案裡沒有可匯入的資料列" }, { status: 400 });
     }

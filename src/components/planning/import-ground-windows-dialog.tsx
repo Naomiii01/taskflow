@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Upload } from "lucide-react";
+import { CheckCircle2, Loader2, Upload, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -65,7 +65,8 @@ export function ImportGroundWindowsDialog({
               type="file"
               accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground"
+              disabled={importWindows.isPending}
+              className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground disabled:opacity-50"
             />
           </div>
 
@@ -81,7 +82,15 @@ export function ImportGroundWindowsDialog({
 
           {result && (
             <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-muted/30 p-3 text-sm">
-              <p>成功匯入 {result.imported} 筆。</p>
+              {result.imported > 0 ? (
+                <p className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="size-4 shrink-0" /> 匯入成功，已匯入 {result.imported} 筆。
+                </p>
+              ) : (
+                <p className="flex items-center gap-1.5 font-medium text-destructive">
+                  <XCircle className="size-4 shrink-0" /> 匯入失敗，沒有任何一列成功匯入。
+                </p>
+              )}
               {result.skipped.length > 0 && (
                 <div className="flex flex-col gap-1">
                   <p className="text-destructive">{result.skipped.length} 列無法匯入：</p>
@@ -114,11 +123,19 @@ export function ImportGroundWindowsDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={importWindows.isPending}>
             關閉
           </Button>
           <Button type="button" onClick={onImport} disabled={!file || importWindows.isPending}>
-            <Upload className="size-4" /> 匯入
+            {importWindows.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> 匯入中，請稍候…
+              </>
+            ) : (
+              <>
+                <Upload className="size-4" /> 匯入
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

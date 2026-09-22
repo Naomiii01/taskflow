@@ -143,10 +143,18 @@ export type LinkableTask = {
 };
 
 async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, {
-    ...init,
-    headers: init?.body instanceof FormData ? init?.headers : { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(input, {
+      ...init,
+      headers: init?.body instanceof FormData ? init?.headers : { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    });
+  } catch {
+    // 連線中斷或逾時（例如大檔案匯入處理太久被伺服器中斷）——瀏覽器原生的
+    // "Failed to fetch" 不好懂，換成看得懂的訊息，確保一定會跳出提示，
+    // 不會讓人以為按了沒反應。
+    throw new Error("連線逾時或中斷，請確認網路狀況後重新嘗試（檔案較大時匯入可能需要多等一下）");
+  }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body?.error ?? `發生錯誤（${res.status}）`);
   return body as T;
@@ -313,7 +321,14 @@ export function useImportGroundWindows() {
       return fetchJson<ImportResult>("/api/planning/ground-windows/import", { method: "POST", body: form });
     },
     onSuccess: (result) => {
-      if (result.imported > 0) toast.success(`已匯入 ${result.imported} 筆地面時間`);
+      // 一定要跳出明確的成功／失敗提示——不能匯入完全靜悄悄，讓人搞不清楚
+      // 到底有沒有真的匯進去。0 筆算失敗（用 toast.error，不是溫和的
+      // warning），有匯到才算成功。
+      if (result.imported > 0) {
+        toast.success(`匯入成功：已匯入 ${result.imported} 筆地面時間`);
+      } else {
+        toast.error("匯入失敗：沒有任何一列成功匯入，請查看明細確認檔案格式");
+      }
       if (result.skipped.length > 0) toast.warning(`有 ${result.skipped.length} 列無法匯入，請查看明細`);
       if (result.affectedPlanWindows.length > 0) {
         toast.warning(`有 ${result.affectedPlanWindows.length} 筆已排工的地停時間有異動，請查看明細確認`);
@@ -322,7 +337,7 @@ export function useImportGroundWindows() {
       queryClient.invalidateQueries({ queryKey: ["planning", "ground-window-changes"] });
       queryClient.invalidateQueries({ queryKey: ["planning", "ground-window-change-log"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(`匯入失敗：${err.message}`),
   });
 }
 
