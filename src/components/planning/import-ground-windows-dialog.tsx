@@ -4,6 +4,7 @@ import * as React from "react";
 import { Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -28,18 +29,20 @@ export function ImportGroundWindowsDialog({
 }) {
   const importWindows = useImportGroundWindows();
   const [file, setFile] = React.useState<File | null>(null);
+  const [alreadyLocal, setAlreadyLocal] = React.useState(false);
   const [result, setResult] = React.useState<ImportResult | null>(null);
 
   React.useEffect(() => {
     if (open) {
       setFile(null);
+      setAlreadyLocal(false);
       setResult(null);
     }
   }, [open]);
 
   const onImport = async () => {
     if (!file) return;
-    const res = await importWindows.mutateAsync(file);
+    const res = await importWindows.mutateAsync({ file, alreadyLocal });
     setResult(res);
     setFile(null);
   };
@@ -65,6 +68,16 @@ export function ImportGroundWindowsDialog({
               className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground"
             />
           </div>
+
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox checked={alreadyLocal} onCheckedChange={(checked) => setAlreadyLocal(checked === true)} className="mt-0.5" />
+            <span>
+              檔案裡的時間已經是台北當地時間（不是 Zulu／UTC），跳過自動轉換
+              <span className="block text-xs text-muted-foreground">
+                預設會把 STD/STA 或 LTD/LTA 當成 Zulu 時間、自動 +8 小時轉成台北時間。如果這份檔案的時間本來就已經是台北當地時間，請勾選這裡，避免多轉一次、時間多推 8 小時。
+              </span>
+            </span>
+          </label>
 
           {result && (
             <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-muted/30 p-3 text-sm">
