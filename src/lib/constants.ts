@@ -276,7 +276,17 @@ export const MAJOR_WORK_PLANNING_STATUS_LABELS: Record<MajorWorkPlanningStatus, 
 };
 
 /** 計畫大工的班別——只在有填「計畫大工項目」時才有意義，純過夜停留不用填。 */
-export const WORK_SHIFTS: WorkShift[] = ["早班", "中班", "大夜班"];
+export const WORK_SHIFTS: WorkShift[] = ["05H", "12H", "15H", "17H", "20U", "23H"];
+
+/** 班別代碼對應的實際時段——下拉選單顯示用，"+1" 代表跨到隔天。 */
+export const WORK_SHIFT_LABELS: Record<WorkShift, string> = {
+  "05H": "05H（05:00–13:00）",
+  "12H": "12H（12:00–20:30）",
+  "15H": "15H（15:00–23:30）",
+  "17H": "17H（17:00–01:30+1）",
+  "20U": "20U（20:30–05:00+1）",
+  "23H": "23H（23:00–07:30+1）",
+};
 
 export const WORK_CATEGORIES: WorkCategory[] = [
   "Daily Check",

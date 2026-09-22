@@ -35,6 +35,7 @@ import {
   STATIONS,
   STATION_LABELS,
   WORK_SHIFTS,
+  WORK_SHIFT_LABELS,
 } from "@/lib/constants";
 
 export type AircraftOption = { registration: string; aircraftType: string; homeStation: string };
@@ -321,7 +322,7 @@ export function AddGroundWindowDialog({
                     <SelectContent>
                       <SelectItem value={NONE_VALUE}>未設定</SelectItem>
                       {WORK_SHIFTS.map((s) => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                        <SelectItem key={s} value={s}>{WORK_SHIFT_LABELS[s]}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

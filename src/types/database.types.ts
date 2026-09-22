@@ -83,7 +83,7 @@ export type MajorWorkPlanningStatus = "Draft" | "Confirmed" | "In Progress" | "C
 /** Aircraft Planning Board Lite — which shift a planned major-work item falls
  * in. Only meaningful when major_work_planned is set; a plain overnight stay
  * with no work planned leaves this null. */
-export type WorkShift = "早班" | "中班" | "大夜班";
+export type WorkShift = "05H" | "12H" | "15H" | "17H" | "20U" | "23H";
 
 export type WorkCategory =
   | "Daily Check"

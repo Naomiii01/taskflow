@@ -138,7 +138,7 @@ const planningInfoFields = {
   required_equipment: z.string().trim().max(200).nullable().optional(),
   required_authorization: z.string().trim().max(200).nullable().optional(),
   planning_status: z.enum(MAJOR_WORK_PLANNING_STATUSES as [string, ...string[]]).nullable().optional(),
-  // 早班／中班／大夜班——只在有計畫大工項目時才有意義。
+  // 班別代碼（05H/12H/15H/17H/20U/23H）——只在有計畫大工項目時才有意義。
   shift: z.enum(WORK_SHIFTS as [string, ...string[]]).nullable().optional(),
   // Which currently-Todo tasks this window's major work covers — omit to
   // leave existing links untouched, pass an array (empty included) to

@@ -60,7 +60,7 @@ export type PlanningBoardWindow = {
   requiredEquipment: string | null;
   requiredAuthorization: string | null;
   planningStatus: MajorWorkPlanningStatus | null;
-  // 早班／中班／大夜班——只在有計畫大工項目時才有意義。
+  // 班別代碼（05H/12H/15H/17H/20U/23H）——只在有計畫大工項目時才有意義。
   shift: WorkShift | null;
 };
 
@@ -777,6 +777,10 @@ const ARRIVAL_STATION_HEADERS = new Set([
   "arrival airport",
   "arr airport",
   "arr ap",
+  // Bare "Arr" — some raw ops exports pair it with "Dep" (departure station)
+  // as the shortest possible column-name style; same role as the longer
+  // "Arrival Airport" variants above.
+  "arr",
   "到達站",
   "抵達站",
 ]);
